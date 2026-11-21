@@ -1,0 +1,4 @@
+google-genai>=3.6
+fastapi>=0.115
+uvicorn[standard]>=0.30
+httpx>=0.27  # FastAPI TestClient (테스트용)

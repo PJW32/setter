@@ -221,3 +221,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# 프로젝트: API 원본 응답 샘플 (용량 큼, 로컬 확인용)
+data/raw/
+data/cache/
+data/store.sqlite*
+
+# 프로젝트: 재생성 가능한 대용량 수집본 (scripts/build_rent.py 로 다시 만듦)
+data/rent_deals.csv
