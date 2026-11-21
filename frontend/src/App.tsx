@@ -1,0 +1,174 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+
+import AgentLine from './components/AgentLine'
+import Chat, { type ChatItem } from './components/Chat'
+import CompareCards from './components/CompareCards'
+import DiffPanel from './components/DiffPanel'
+import MapView from './components/MapView'
+import RankingTable from './components/RankingTable'
+import StationSign from './components/StationSign'
+import TradeoffChart from './components/TradeoffChart'
+import { createSession, restoreSession, sendMessage } from './lib/api'
+import type { AgentEvent, LogEvent, ResultPayload, StateSnapshot } from './lib/types'
+
+type Tab = 'map' | 'table' | 'tradeoff' | 'compare'
+const TABS: { key: Tab; label: string }[] = [
+  { key: 'map', label: '지도' },
+  { key: 'table', label: '순위표' },
+  { key: 'tradeoff', label: '시간과 돈' },
+  { key: 'compare', label: '상위 3곳 비교' },
+]
+
+export default function App() {
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [items, setItems] = useState<ChatItem[]>([])
+  const [state, setState] = useState<StateSnapshot | null>(null)
+  const [result, setResult] = useState<ResultPayload | null>(null)
+  const [hypo, setHypo] = useState<ResultPayload | null>(null) // 가정 질문 결과
+  const [logs, setLogs] = useState<LogEvent[]>([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [tab, setTab] = useState<Tab>('map')
+  const [selected, setSelected] = useState<string | null>(null)
+  const idRef = useRef(0)
+
+  const load = useCallback(async (fresh: boolean) => {
+    try {
+      const s = fresh ? await createSession() : await restoreSession()
+      setSessionId(s.session_id)
+      setState(s.state)
+      setResult(s.result)
+      setHypo(null)
+      setLogs([])
+      setSelected(null)
+      setItems(s.messages.map((m) => ({ id: ++idRef.current, kind: m.role, text: m.text, source: m.source })))
+      setError(null)
+    } catch (e) {
+      setError(`서버에 연결하지 못했어요. 백엔드가 켜져 있는지 확인해 주세요. (${(e as Error).message})`)
+    }
+  }, [])
+
+  useEffect(() => { load(false) }, [load])
+
+  const onEvent = useCallback((ev: AgentEvent) => {
+    switch (ev.type) {
+      case 'log':
+        setLogs((l) => [...l, ev])
+        break
+      case 'interpretation':
+        setItems((it) => [...it, { id: ++idRef.current, kind: 'interpretation', interp: ev }])
+        if (!ev.what_if) setState(ev.state)
+        break
+      case 'result':
+        if (ev.what_if) {
+          setHypo(ev.payload)
+        } else {
+          setResult(ev.payload)
+          setHypo(null)
+        }
+        break
+      case 'message':
+        setItems((it) => [...it, { id: ++idRef.current, kind: 'assistant', text: ev.text, source: ev.source }])
+        break
+      case 'error':
+        setItems((it) => [...it, { id: ++idRef.current, kind: 'error', text: ev.detail }])
+        break
+    }
+  }, [])
+
+  const send = useCallback(async (text: string) => {
+    if (!sessionId || busy) return
+    setBusy(true)
+    setLogs([])
+    setItems((it) => [...it, { id: ++idRef.current, kind: 'user', text }])
+    try {
+      await sendMessage(sessionId, text, onEvent)
+    } catch (e) {
+      setItems((it) => [...it, { id: ++idRef.current, kind: 'error', text: (e as Error).message }])
+    } finally {
+      setBusy(false)
+    }
+  }, [sessionId, busy, onEvent])
+
+  const shown = hypo ?? result
+
+  return (
+    <div className="app">
+      <StationSign state={state} busy={busy} onReset={() => load(true)} />
+
+      <aside className="chat-col" aria-label="대화">
+        <Chat items={items} busy={busy} onSend={send} disabled={!sessionId} />
+      </aside>
+
+      <main className="work-col">
+        {error && <p className="banner banner-error" role="alert">{error}</p>}
+
+        {hypo && (
+          <p className="banner banner-hypo">
+            가정해 본 결과예요. 실제 조건은 그대로입니다. 바꾸려면 "통근 30분 이내로 바꿔줘"처럼 말해 주세요.
+            <button className="link-btn" onClick={() => setHypo(null)}>현재 결과로 돌아가기</button>
+          </p>
+        )}
+        {shown?.tradeoffs.map((t) => (
+          <p key={t.factors.join()} className="banner banner-warn">
+            <strong>{t.factors[0]}와(과) {t.factors[1]}는 함께 얻기 어려워요.</strong> {t.message}.
+          </p>
+        ))}
+        {shown?.notes.map((n) => <p key={n} className="banner banner-warn">{n}</p>)}
+
+        <nav className="tabs" role="tablist" aria-label="결과 보기">
+          {TABS.map((t) => (
+            <button key={t.key} role="tab" aria-selected={tab === t.key}
+              className={tab === t.key ? 'tab is-active' : 'tab'} onClick={() => setTab(t.key)}>
+              {t.label}
+            </button>
+          ))}
+          {shown && (
+            <span className="tabs-meta">
+              후보 {shown.universe_size}곳 중 조건을 만족한 {shown.ranked.length}곳
+            </span>
+          )}
+        </nav>
+
+        <section className="stage">
+          {!shown ? (
+            <div className="empty">
+              <p className="empty-title">출근할 곳과 예산을 말하면, 여기에 동네 순위가 나와요.</p>
+              <p className="empty-body">
+                매물이 아니라 동네를 비교합니다. 월세 실거래가, 대중교통 시간, 역까지 거리, 편의시설, 주변 주점 수를
+                숫자로 보여주고, 왜 그 순서인지 설명해요.
+              </p>
+            </div>
+          ) : tab === 'map' ? (
+            <MapView result={shown} selected={selected} onSelect={setSelected} />
+          ) : tab === 'table' ? (
+            <RankingTable result={shown} selected={selected} onSelect={setSelected} />
+          ) : tab === 'tradeoff' ? (
+            <TradeoffChart result={shown} selected={selected} onSelect={setSelected} />
+          ) : (
+            <CompareCards result={shown} selected={selected} conversionRate={state?.params.conversion_rate ?? 0.05} />
+          )}
+        </section>
+
+        <div className="lower">
+          <DiffPanel diff={shown?.diff ?? null} />
+          <AgentLine logs={logs} busy={busy} />
+        </div>
+
+        {shown && (
+          <footer className="sources">
+            <p>
+              실거래가는 {shown.rent_period.replace(/(\d{4})(\d{2})~(\d{4})(\d{2})/, '$1년 $2월 ~ $3년 $4월')} 계약 기준 시세 참고용이며,
+              현재 매물 가격이 아닙니다. 관리비·치안·집 상태는 데이터가 없어 직접 확인해야 해요.
+            </p>
+            <dl>
+              {Object.entries(shown.sources).map(([k, v]) => (
+                <div key={k}><dt>{k}</dt><dd>{v}</dd></div>
+              ))}
+            </dl>
+          </footer>
+        )}
+      </main>
+    </div>
+  )
+}
