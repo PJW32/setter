@@ -126,7 +126,7 @@ for (;;) {
 
 - CORS: `http://localhost:5173` (Vite 개발 서버)
 - 배포: 백엔드와 빌드된 프론트를 한 서버에. SQLite·캐시가 남는 디스크 필요
-- 미리 수집: `settings.PREWARM_DESTINATIONS`
+- 실거래 사전 준비: `python scripts/prewarm_rent.py --saved-regions --offline`. 기존 국토부 캐시로 별도 스냅샷을 구성한다. 저장 상태는 `python scripts/prewarm_data.py --status`. 카카오 자료를 저장하는 전체 수집 명령은 사용 범위 확인 전 기본 차단한다. 상세: [사전 수집 운영](data-prewarm.md).
 - 실제 API 점검: `python scripts/smoke_agent.py` (판교 시나리오 3턴, 실제 호출)
 
 ## 5. 테스트

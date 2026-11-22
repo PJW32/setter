@@ -132,20 +132,29 @@ def ensure_sgg(code: str, sido: str, name: str, seed: tuple[float, float], log=_
         label = f"{sido} {name}"
         try:
             log("collect", "running", f"{label}: 법정동 찾는 중")
+            stage_started = time.monotonic()
             raw = region.discover(code, seed)
+            log("collect", "done", f"{label}: 법정동 탐색 완료", ms=round((time.monotonic() - stage_started) * 1000))
             log("collect", "running", f"{label}: 법정동 {len(raw)}곳 — 대표 지점·역·편의·주점")
+            stage_started = time.monotonic()
             dongs = list(OUTER_POOL.map(region.dong_record, raw.values()))
+            log("collect", "done", f"{label}: 대표 지점·역·시설 완료", ms=round((time.monotonic() - stage_started) * 1000))
 
             deals = []
             if get_key("DATA_GO_KR_SERVICE_KEY", required=False):
                 log("collect", "running", f"{label}: 전월세 실거래 {S.RENT_MONTHS}개월")
+                stage_started = time.monotonic()
                 code_of = {d["name"]: d["dong_code"] for d in dongs}
                 for ht in molit.SERVICES:
                     for ym in _months(S.RENT_END_YM, S.RENT_MONTHS):
-                        for it in molit.fetch_raw(ht, code, ym):
-                            r = molit.normalize(ht, it)
+                        records = molit.prepared_records(ht, code, ym)
+                        if records is None:
+                            records = [molit.normalize(ht, it) for it in molit.fetch_raw(ht, code, ym)]
+                        for record in records:
+                            r = dict(record)
                             r["dong_code"] = code_of.get(r["dong_name"], "")
                             deals.append(r)
+                log("collect", "done", f"{label}: 실거래 수집 완료", ms=round((time.monotonic() - stage_started) * 1000))
             store.save_sgg(code, sido, name, dongs, deals)
             log("collect", "done", f"{label}: 동 {len(dongs)}곳, 실거래 {len(deals):,}건 ({time.time() - t0:.0f}초)")
             return {**store.sgg_status(code), "cached": False}
