@@ -65,9 +65,10 @@ export default function RankingTable({ result, onCompare }: Props) {
             <th scope="col">순위</th>
             <th scope="col">동네</th>
             <th scope="col" className="col-score">점수와 구성</th>
-            {FACTORS.map((f) => (
-              <th key={f.key} scope="col" className="num">{f.key === 'quiet' ? '주점 수' : f.label}</th>
-            ))}
+            {FACTORS.map((f) => {
+              const label = f.key === 'quiet' ? '주점 수' : f.label
+              return <th key={f.key} scope="col" className="num" title={label}>{label}</th>
+            })}
             <th scope="col">비교</th>
           </tr>
         </thead>
@@ -75,11 +76,12 @@ export default function RankingTable({ result, onCompare }: Props) {
           {rows.map((d) => (
             <tr key={d.dong_code}>
               <td className="num rank-no">{d.rank}</td>
-              <td><span className="dong-name">{d.name}</span><span className="dong-sgg">{d.sgg}</span><Flags d={d} /></td>
+              <td title={[d.name, d.sgg, ...d.flags].join(' · ')}><span className="dong-name">{d.name}</span><span className="dong-sgg">{d.sgg}</span><Flags d={d} /></td>
               <td><ScoreBar d={d} /></td>
-              {FACTORS.map((f) => (
-                <td key={f.key} className="num">{rawText(f.key, d.raw[f.key])}</td>
-              ))}
+              {FACTORS.map((f) => {
+                const value = rawText(f.key, d.raw[f.key])
+                return <td key={f.key} className="num" title={value}>{value}</td>
+              })}
               <td><button type="button" className="link-btn" aria-label={`${d.sgg} ${d.name} 비교`} onClick={() => onCompare(d.dong_code)}>비교</button></td>
             </tr>
           ))}
