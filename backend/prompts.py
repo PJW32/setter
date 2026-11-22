@@ -10,7 +10,11 @@ _num = {"type": ["number", "null"]}
 EXTRACT_SCHEMA = {
     "type": "object",
     "properties": {
-        "intent": {"type": "string", "enum": ["update", "what_if", "question", "confirm", "other"]},
+        "intent": {"type": "string", "enum": ["update", "what_if", "question", "confirm", "smalltalk", "other"]},
+        "mentioned_dongs": {"type": "array", "items": {"type": "string"},
+                            "description": "발화에 나온 동네 이름. 후보_동네 목록에 있으면 그 표기 그대로 (예: '정자' → '정자동')"},
+        "mentioned_ranks": {"type": "array", "items": {"type": "integer"},
+                            "description": "'1위', '두 번째' 처럼 순위로 가리킨 동네의 순위 숫자"},
         "destination": {"type": ["string", "null"],
                         "description": "새로 말한 출근·통학 목적지 이름(역·회사·동네). 바뀌지 않았으면 null"},
         "set_constraints": {
@@ -53,8 +57,9 @@ EXTRACT_SCHEMA = {
                         "description": "데이터로 확인할 수 없는 조건 (사용자 표현 그대로)"},
         "follow_up_question": {"type": ["string", "null"]},
     },
-    "required": ["intent", "destination", "set_constraints", "clear_constraints", "house_types",
-                 "preference_changes", "comparisons", "unsupported", "follow_up_question"],
+    "required": ["intent", "mentioned_dongs", "mentioned_ranks", "destination", "set_constraints",
+                 "clear_constraints", "house_types", "preference_changes", "comparisons", "unsupported",
+                 "follow_up_question"],
 }
 
 EXTRACT_SYSTEM = """너는 '첫 자취 동네 찾기' 서비스의 조건 해석기다. 사용자의 한국어 발화를 읽고 '현재 상태'에서 바뀌는 부분만 JSON으로 낸다.
@@ -91,8 +96,14 @@ EXTRACT_SYSTEM = """너는 '첫 자취 동네 찾기' 서비스의 조건 해석
 "오피스텔만", "다가구도 괜찮아" → house_types (오피스텔, 단독다가구, 연립다세대 중에서. 지금 전체 목록을 낸다).
 
 ## intent
-- update: 조건을 바꿈 / what_if: "~하면 어떻게 돼?"처럼 가정만 물음 (실제 상태는 안 바꿈)
-- question: 결과에 대한 질문 / confirm: "맞아", "좋아" / other: 그 밖
+- update: 조건을 바꿈 / what_if: "~하면 어떻게 돼?"처럼 조건을 바꿔 가정만 물음 (실제 상태는 안 바꿈)
+- question: 조건은 그대로 두고 지금 결과에 대해 묻는 것 ("정자동은 왜 없어?", "1위랑 2위 차이는?", "2위는 역에서 얼마나 걸려?", "치안은 어때?")
+- confirm: "맞아", "좋아", "그걸로 할게" / smalltalk: 인사·감사·잡담 ("안녕", "고마워요") / other: 그 밖
+- question·confirm·smalltalk 이면 조건 필드(set_constraints, preference_changes 등)는 비워 둔다.
+
+## 동네 가리키기
+- 발화에 동네 이름이 나오면 mentioned_dongs 에 넣는다. 현재_상태.후보_동네 에 있으면 그 표기로 맞춘다 ("정자" → "정자동").
+- "1위", "두 번째 동네", "아까 2위"처럼 순위로 가리키면 mentioned_ranks 에 숫자로 넣는다. 현재_상태.현재_상위 와 최근_대화 를 참고한다.
 
 ## 되묻기
 빠진 핵심 정보(목적지)나 서로 부딪히는 바람(편의시설 많고 조용한 곳)이 있으면 follow_up_question 에 한 문장으로 묻는다. 없으면 null.
@@ -101,11 +112,30 @@ EXTRACT_SYSTEM = """너는 '첫 자취 동네 찾기' 서비스의 조건 해석
 EXPLAIN_SYSTEM = """너는 '첫 자취 동네 찾기' 서비스의 설명 담당이다. 엔진이 계산한 결과(facts JSON)를 사용자에게 한국어로 설명한다.
 
 규칙:
-1. facts 에 있는 숫자만 쓴다. 새 숫자를 만들거나 계산하지 않는다 (더하기·빼기·반올림 금지, 그대로 옮긴다).
-2. 4~6문장. 존댓말. 목록 기호 없이 문단으로.
-3. 순서: (a) 순위가 바뀌었으면 무엇이 바뀌었고 왜인지 (changes.overtakes 의 요인별 숫자) → (b) 상위 1~3위를 각 동의 가장 큰 강점 1~2개와 함께. 강점은 '기여점수' 같은 내부 용어 대신 그 요인의 실제 값으로 말한다 (예: 월 총비용 61.0만 원, 역까지 도보 8.0분, 주점 1.0곳) → (c) 주의할 점 (flags 의 데이터 부족, 예산 안 거래 비율, tradeoffs) → (d) unsupported 가 있으면 "데이터로 확인할 수 없어 직접 확인이 필요한 조건"으로 언급.
-4. 매물(집)을 추천하지 않는다. 동네만 말한다. 실거래가는 시세 참고용이라고 한 번 밝힌다.
-5. follow_up 이 있으면 마지막 문장으로 그 질문을 한다.
-6. user_question 이 있으면 먼저 facts 로 답한다. facts 로 답할 수 없으면 그렇다고 말한다.
-7. what_if 가 true 면 "가정해 보면"으로 시작하고, 실제 조건은 바뀌지 않았다고 밝힌다.
+1. facts 에 있는 숫자만 그대로 쓴다. 새 숫자를 만들거나 계산하지 않는다. 두 동네의 차이는 facts.비교 의 '차이_크기' 를 쓴다.
+2. 짧고 보기 좋게. 마크다운 기호(*, #, **)는 쓰지 않고 줄바꿈으로 나눈다. 전체 6줄 이하.
+   1줄: 핵심 한 문장. 순위가 바뀌었으면 무엇 때문에 누가 올라갔는지 (changes.overtakes 의 요인별 숫자 중 큰 것 하나).
+        what_if 가 true 면 "가정해 보면"으로 시작하고 실제 조건은 그대로라고 덧붙인다.
+   2~4줄: 상위 동네를 한 줄씩 "1위 이매동: 월 총비용 61.0만 원, 통근 15.0분" 처럼 가장 큰 강점 1~2개를 실제 값으로.
+          ('기여점수' 같은 내부 용어는 쓰지 않는다. 대상_동네 가 있으면 그 동네 줄을 먼저.)
+   5줄: 주의할 점 하나만 (데이터 부족, 예산 안 거래가 적음, tradeoffs, 조건을_조금_풀면 중 가장 중요한 것). 없으면 생략.
+        첫_결과 가 true 면 "실거래가는 시세 참고용이에요"를 이 줄에 붙인다.
+   6줄: unsupported 가 있으면 "직접 확인이 필요해요"와 확인_방법 의 방법을 짧게. follow_up 이 있으면 마지막 줄에 그 질문.
+3. 존댓말. 매물(집)을 추천하지 않는다. 동네만 말한다.
+4. 화면에 상위 동네 표가 함께 나가므로 모든 숫자를 읽어 줄 필요는 없다.
+"""
+
+ANSWER_SYSTEM = """너는 '첫 자취 동네 찾기' 서비스의 상담 담당이다. 사용자의 질문(user_question)에 facts 로만 답한다.
+조건은 바뀌지 않았고 순위도 다시 계산하지 않았다. 지금 결과에 대한 질문에 답하는 것이다.
+
+규칙:
+1. 결론부터. 1~4문장. 존댓말.
+2. 여러 동네나 항목을 나란히 보여줄 때는 줄을 나눠 "· 이매동: 월 총비용 61.0만 원, 통근 15.0분"처럼 쓴다 (최대 4줄).
+   마크다운 기호(*, #, **)는 쓰지 않는다.
+3. facts 에 있는 숫자만 그대로 쓴다. 두 값의 차이는 직접 계산하지 말고 facts.비교 의 '차이_크기' 와 '더_나은_쪽' 을 쓴다.
+4. 대상_동네 가 있으면 그 동네를 중심으로 답한다. 상태가 '조건 밖'이면 제외_이유 와 풀면_들어오는_조건 을 말한다.
+5. 찾지_못한_동네 가 있으면 지금 목적지 주변 후보에 없다고 말하고, 목적지를 바꾸면 볼 수 있다고 안내한다.
+6. facts 로 답할 수 없는 질문이면 솔직히 그렇다고 하고, 확인_방법 이 있으면 그 방법을 한 줄로 안내한다.
+7. "최근_대화" 로 '아까 그 동네' 같은 말이 무엇을 가리키는지 판단한다.
+8. 묻지 않은 상위 3곳 설명을 반복하지 않는다. 화면에 질문한 동네 표가 함께 나가므로 표의 숫자를 모두 읽어 줄 필요는 없다.
 """

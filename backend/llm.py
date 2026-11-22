@@ -19,7 +19,8 @@ MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
 _client = None
 
 EMPTY_CHANGES = {
-    "intent": "other", "destination": None, "set_constraints": {}, "clear_constraints": [], "house_types": None,
+    "intent": "other", "mentioned_dongs": [], "mentioned_ranks": [],
+    "destination": None, "set_constraints": {}, "clear_constraints": [], "house_types": None,
     "preference_changes": [], "comparisons": [], "unsupported": [], "follow_up_question": None,
 }
 
@@ -117,7 +118,16 @@ def unknown_numbers(text: str, facts: dict) -> list[str]:
 
 
 def explain(facts: dict) -> tuple[str | None, dict]:
-    """(설명문 또는 None, 호출 정보). None 이면 템플릿 설명을 쓴다."""
+    """조건이 바뀐 뒤의 결과 설명. (설명문 또는 None, 호출 정보). None 이면 템플릿 설명을 쓴다."""
+    return _compose(prompts.EXPLAIN_SYSTEM, facts)
+
+
+def answer(facts: dict) -> tuple[str | None, dict]:
+    """지금 결과에 대한 질문 답변 (순위 재계산 없음). 숫자 검사는 설명과 같다."""
+    return _compose(prompts.ANSWER_SYSTEM, facts)
+
+
+def _compose(system: str, facts: dict) -> tuple[str | None, dict]:
     contents = json.dumps(facts, ensure_ascii=False)
     info = {"model": MODEL, "attempts": 0}
     feedback = ""
@@ -125,7 +135,7 @@ def explain(facts: dict) -> tuple[str | None, dict]:
         info["attempts"] = attempt + 1
         t0 = time.time()
         try:
-            text = _generate(prompts.EXPLAIN_SYSTEM, contents + feedback, temperature=0.3).strip()
+            text = _generate(system, contents + feedback, temperature=0.3).strip()
         except Exception as e:  # noqa: BLE001
             info["error"] = f"{type(e).__name__}: {str(e)[:200]}"
             continue
