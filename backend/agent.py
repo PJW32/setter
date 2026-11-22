@@ -99,7 +99,9 @@ class Agent:
         has_changes = bool(changes.get("destination") or changes.get("house_types") or changes["preference_changes"]
                            or changes["clear_constraints"]
                            or any(v is not None for v in changes["set_constraints"].values()))
-        guides_ = guides.match(list(changes.get("unsupported") or []) + [text])
+        guide_texts = list(changes.get("unsupported") or []) + [text]
+        outside = list(changes.get("outside_topics") or [])
+        guides_ = guides.match(guide_texts, outside=outside)
         if not has_changes:
             if intent in ("smalltalk", "confirm") or (intent == "other" and not guides_ and not has_result):
                 yield _log("reply", "done", "인사·확인이라 조건과 순위는 그대로 두고 짧게 답함")
@@ -107,7 +109,7 @@ class Agent:
                 yield _ev("done")
                 return
             if has_result:
-                yield from self._answer(s, text, changes, guides_)
+                yield from self._answer(s, text, changes, guide_texts, outside)
                 return
 
         # 2. 목적지
@@ -185,6 +187,8 @@ class Agent:
         # 6. 설명
         yield _log("explain", "running", "결과 설명 작성 (Gemini, 엔진 숫자만 사용)")
         targets, _ = presenter.find_targets(res, text, changes.get("mentioned_dongs"), changes.get("mentioned_ranks"))
+        place = targets[0]["name"] if targets else (dest.place_name if dest else None)
+        guides_ = guides.match(guide_texts, outside=outside, place=place)
         f = presenter.facts(res, destination=dest.to_dict(), report=report, diff=diff, trade=trade,
                             unsupported=changes["unsupported"], follow_up=follow_up,
                             question=text if changes.get("intent") == "question" else None,
@@ -205,11 +209,12 @@ class Agent:
             s.state, s.dest, s.result, s.dataset, s.ds_key = new_state, dest, res, ds, dest.key
         title = "말씀하신 동네" if targets else ("가정해 본 상위 3곳" if what_if else "상위 3곳")
         atts = presenter.attachments(rows=targets or res.top(3), title=title, guides_=guides_)
-        yield from self._say(s, text_out, source, follow_up=bool(follow_up), attachments=atts)
+        yield from self._say(s, text_out, source, follow_up=bool(follow_up), attachments=atts,
+                             focus=presenter.focus_for(text, targets))
         yield _ev("done")
 
     # ------------------------------------------------------------------ 질문 답변 (조건 그대로, 재계산 없음)
-    def _answer(self, s: Session, text: str, changes: dict, guides_: list[dict]):
+    def _answer(self, s: Session, text: str, changes: dict, guide_texts: list[str], outside: list[str]):
         res = s.result
         targets, missing = presenter.find_targets(res, text, changes.get("mentioned_dongs"),
                                                   changes.get("mentioned_ranks"))
@@ -217,6 +222,8 @@ class Agent:
             by_code = {e["dong_code"]: e for e in res.ranked + res.excluded}
             targets = [by_code[c] for c in s.last_targets if c in by_code]
         s.last_targets = [e["dong_code"] for e in targets]
+        place = targets[0]["name"] if targets else (s.dest.place_name if s.dest else None)
+        guides_ = guides.match(guide_texts, outside=outside, place=place)
         who = f" · 대상: {', '.join(e['name'] for e in targets)}" if targets else ""
         yield _log("answer", "running", f"지금 결과에서 답 찾기 (조건 그대로, 순위 재계산 없음){who}")
         f = presenter.answer_facts(
@@ -231,7 +238,7 @@ class Agent:
             yield _log("answer", "warn", "LLM 답변이 숫자 검사를 통과하지 못해 템플릿 답변으로 대체", info=info)
             source = "template"
         atts = presenter.attachments(rows=targets, title="질문한 동네", guides_=guides_)
-        yield from self._say(s, out, source, attachments=atts)
+        yield from self._say(s, out, source, attachments=atts, focus=presenter.focus_for(text, targets))
         yield _ev("done")
 
     # ------------------------------------------------------------------ 가정 비교 (상태 안 바뀜)
@@ -245,13 +252,13 @@ class Agent:
 
     # ------------------------------------------------------------------ 도우미
     def _say(self, s: Session, text: str, source: str, follow_up: bool = False,
-             attachments: list[dict] | None = None):
+             attachments: list[dict] | None = None, focus: dict | None = None):
         msg = {"role": "assistant", "text": text, "source": source}
         if attachments:
             msg["attachments"] = attachments
         s.messages.append(msg)
         s.last_question = text if follow_up else None
-        yield _ev("message", text=text, source=source, attachments=attachments or [])
+        yield _ev("message", text=text, source=source, attachments=attachments or [], focus=focus)
 
     @staticmethod
     def _run_with_logs(fn):

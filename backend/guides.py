@@ -4,6 +4,8 @@ LLM 이 지어내지 않도록 확인 경로(공공 사이트, 현장 확인 요
 발화나 '확인 불가' 항목에 키워드가 있으면 골라서 넘긴다.
 """
 
+from urllib.parse import quote
+
 GUIDES = [
     {
         "topic": "치안·밤길",
@@ -67,21 +69,43 @@ GUIDES = [
     },
     {
         "topic": "실제 매물·현재 시세",
-        "keys": ["매물", "현재 시세", "지금 시세", "호가", "방 구하", "집 구하", "빈방"],
+        "keys": ["매물", "현재 시세", "지금 시세", "호가", "방 구하", "집 구하", "빈방", "나와 있는 방", "나와있는 방",
+                 "방 보여", "집 보여", "방 있어", "방 찾아", "원룸 보여", "방 목록", "계약할 수 있는"],
         "how": "이 서비스는 지난 12개월 실거래로 동네를 비교해요. 지금 나와 있는 방은 부동산 앱이나 동네 중개사무소에서 확인하세요.",
         "links": [("직방", "https://www.zigbang.com"), ("다방", "https://www.dabangapp.com")],
+    },
+    {
+        "topic": "인터넷",
+        "keys": ["인터넷", "와이파이", "wifi", "통신"],
+        "how": "인터넷 속도는 건물과 통신사마다 달라요. 계약 전에 건물에 들어오는 통신사를 확인하고, 현장에서 속도 측정 앱으로 재 보세요.",
+        "links": [],
     },
 ]
 
 
-def match(texts: list[str], limit: int = 3) -> list[dict]:
-    """텍스트(발화, 확인 불가 항목)에 키워드가 있는 안내를 고른다. 화면·LLM 공용 형식."""
-    joined = " ".join(t for t in texts if t).lower()
+def _search_link(place: str | None, topic: str) -> dict:
+    q = f"{place} {topic}".strip() if place else topic
+    return {"label": f"카카오맵에서 '{q}' 검색", "url": f"https://map.kakao.com/?q={quote(q)}"}
+
+
+def match(texts: list[str], *, outside: list[str] | None = None, place: str | None = None,
+          limit: int = 3) -> list[dict]:
+    """텍스트(발화, 확인 불가 항목)에 키워드가 있는 안내를 고른다. 화면·LLM 공용 형식.
+
+    outside: 우리 데이터로 답할 수 없는 주제어(LLM 이 분류). 정해 둔 안내로 다루지 못한 주제는
+    '카카오맵에서 동네 이름 + 주제로 검색' 기본 안내를 붙인다. place 는 검색어에 쓸 동네 이름.
+    """
+    joined = " ".join(t for t in [*texts, *(outside or [])] if t).lower()
     out = []
     for g in GUIDES:
         if any(k in joined for k in g["keys"]):
             out.append({"topic": g["topic"], "how": g["how"],
                         "links": [{"label": label, "url": url} for label, url in g["links"]]})
-        if len(out) >= limit:
-            break
-    return out
+    for topic in outside or []:
+        t = (topic or "").strip()
+        if not t or any(k in t.lower() for g in GUIDES for k in g["keys"]):
+            continue  # 정해 둔 안내가 이미 다룸
+        where = f"{place} " if place else ""
+        out.append({"topic": t, "how": f"이 정보는 서비스 데이터에 없어요. 지도 앱에서 '{where}{t}'(으)로 검색해 보세요.",
+                    "links": [_search_link(place, t)], "default": True})
+    return out[:limit]

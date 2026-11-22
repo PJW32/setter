@@ -21,7 +21,8 @@ _client = None
 EMPTY_CHANGES = {
     "intent": "other", "mentioned_dongs": [], "mentioned_ranks": [],
     "destination": None, "set_constraints": {}, "clear_constraints": [], "house_types": None,
-    "preference_changes": [], "comparisons": [], "unsupported": [], "follow_up_question": None,
+    "preference_changes": [], "comparisons": [], "unsupported": [], "outside_topics": [],
+    "follow_up_question": None,
 }
 
 

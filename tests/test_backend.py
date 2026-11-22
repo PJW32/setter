@@ -351,6 +351,79 @@ class IntentRoutingTest(unittest.TestCase):
         self.assertFalse(fake.facts[-1]["첫_결과"])
 
 
+class GuidesAndUnitsTest(unittest.TestCase):
+    """확인 방법 범위, 숫자 단위, 화면 연동."""
+
+    def setUp(self):
+        self.data = FakeData()
+
+    def start(self, *turns, **kw):
+        fake = FakeLLM([FIRST, *turns], **kw)
+        agent = Agent(self.data, fake)
+        s = agent.new_session()
+        run(agent, s, "가상역 출근, 통근 45분 이내")
+        return agent, s, fake
+
+    def test_listing_keywords_get_listing_guide(self):
+        from backend import guides
+        for text in ("지금 이매동에 나와 있는 방 보여줘", "방 보여줘", "원룸 보여줘"):
+            self.assertEqual(guides.match([text])[0]["topic"], "실제 매물·현재 시세", text)
+
+    def test_outside_topic_gets_map_search_guide(self):
+        agent, s, fake = self.start({"intent": "question", "mentioned_dongs": ["다동"], "outside_topics": ["맛집"]})
+        evs = run(agent, s, "다동에 맛집 많아?")
+        guide = next(a for a in next(e for e in evs if e["type"] == "message")["attachments"] if a["kind"] == "guides")
+        item = guide["items"][0]
+        self.assertEqual(item["topic"], "맛집")
+        self.assertIn("map.kakao.com", item["links"][0]["url"])
+        self.assertIn("다동 맛집", item["links"][0]["label"])  # 질문한 동네 이름으로 검색
+
+    def test_known_topic_does_not_get_duplicate_default_guide(self):
+        from backend import guides
+        got = guides.match(["치안은 어때?"], outside=["치안"])
+        self.assertEqual([g["topic"] for g in got], ["치안·밤길"])
+
+    def test_counts_and_minutes_are_integers(self):
+        agent, s, fake = self.start({"intent": "question", "mentioned_dongs": ["다동", "라동"]})
+        evs = run(agent, s, "다동이랑 라동 비교해줘")
+        att = next(e for e in evs if e["type"] == "message")["attachments"][0]
+        for row in att["rows"]:
+            for k in ("commute", "station_walk", "bars"):
+                self.assertIsInstance(row[k], int, k)
+        items = {i["label"]: i for i in att["compare"]["items"]}
+        self.assertIsInstance(items["통근 시간"]["diff"], int)
+        self.assertIsInstance(items["주변 주점"]["a"], int)
+        self.assertIsInstance(items["월 총비용"]["a"], float)  # 금액은 소수 첫째 자리
+        facts = fake.answer_facts[-1]["대상_동네"][0]
+        self.assertIsInstance(facts["통근_분"], int)
+
+    def test_compare_attachment_has_factor_points_for_chart(self):
+        agent, s, fake = self.start({"intent": "question", "mentioned_dongs": ["다동", "라동"]})
+        evs = run(agent, s, "다동이랑 라동 비교해줘")
+        cmp = next(e for e in evs if e["type"] == "message")["attachments"][0]["compare"]
+        self.assertEqual([f["key"] for f in cmp["factors"]],
+                         ["monthly_cost", "commute", "station_access", "convenience", "quiet"])
+        rows = {r["name"]: r for r in s.result.ranked}
+        self.assertAlmostEqual(sum(f["a"] for f in cmp["factors"]), rows["다동"]["score"], places=0)
+
+    def test_focus_moves_right_panel(self):
+        agent, s, fake = self.start(
+            {"intent": "question", "mentioned_dongs": ["다동"]},
+            {"intent": "question", "mentioned_dongs": ["다동", "라동"]},
+            {"intent": "question", "mentioned_dongs": ["라동"]},
+            {"intent": "question"},
+        )
+        focus = lambda evs: next(e for e in evs if e["type"] == "message")["focus"]  # noqa: E731
+        f1 = focus(run(agent, s, "다동은 어때?"))
+        self.assertEqual(f1["tab"], "map")
+        f2 = focus(run(agent, s, "다동이랑 라동 비교해줘"))
+        self.assertEqual(f2["tab"], "compare")
+        self.assertEqual(len(f2["dong_codes"]), 2)
+        f3 = focus(run(agent, s, "라동은 통근이 얼마나 걸려?"))
+        self.assertEqual(f3["tab"], "tradeoff")
+        self.assertIsNone(focus(run(agent, s, "조건 어떻게 돼?")))  # 대상이 없으면 화면은 그대로
+
+
 class ApiTest(unittest.TestCase):
     def test_sse_stream(self):
         from fastapi.testclient import TestClient

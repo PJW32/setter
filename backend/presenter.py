@@ -13,6 +13,19 @@ def _r(v, nd=1):
     return round(v, nd) if isinstance(v, float) else v
 
 
+# 숫자 단위: 셀 수 있는 것·분·원은 정수, 금액(만원)·점수는 소수 첫째 자리
+INT_UNITS = {"분", "곳", "개", "건", "회", "원", "위"}
+
+
+def _i(v):
+    """정수 단위 값: 15.0 → 15. 값이 없으면 그대로."""
+    return int(round(v)) if isinstance(v, (int, float)) and not isinstance(v, bool) else v
+
+
+def by_unit(v, unit: str):
+    return _i(v) if unit in INT_UNITS else _r(v)
+
+
 # ------------------------------------------------------------------ 화면용
 def dong_card(e: dict) -> dict:
     d = e["detail"]
@@ -97,8 +110,10 @@ def tradeoffs(res: Result) -> list[dict]:
         best_a, worst_a = pts[-q:], pts[:q]
         out.append({
             "factors": [LABEL[a], LABEL[b]], "correlation": round(r, 2), "message": msg,
-            f"{LABEL[a]} 상위 25% 동의 {LABEL[b]} 원값 중앙값": _r(statistics.median(p[2]["raw"][b] for p in best_a)),
-            f"{LABEL[a]} 하위 25% 동의 {LABEL[b]} 원값 중앙값": _r(statistics.median(p[2]["raw"][b] for p in worst_a)),
+            f"{LABEL[a]} 상위 25% 동의 {LABEL[b]} 원값 중앙값":
+                by_unit(statistics.median(p[2]["raw"][b] for p in best_a), FACTORS[b].unit),
+            f"{LABEL[a]} 하위 25% 동의 {LABEL[b]} 원값 중앙값":
+                by_unit(statistics.median(p[2]["raw"][b] for p in worst_a), FACTORS[b].unit),
         })
     return out
 
@@ -115,10 +130,10 @@ def dong_facts(e: dict) -> dict:
         "순위": e.get("rank"), "동": f"{e['sgg']} {e['name']}", "점수": _r(e["score"]),
         "월총비용_만원": _r(c["cost"]["monthly_total"]),
         "보증금_중앙값_만원": _r(c["cost"]["median_deposit"]), "월세_중앙값_만원": _r(c["cost"]["median_rent"]),
-        "월교통비_만원": c["cost"]["fare_month"], "실거래_표본": c["cost"]["samples"],
-        "통근_분": c["raw"].get("commute"), "통근_수단": c["commute"].get("mode"), "노선": c["commute"].get("lines"),
-        "가까운역": c["station"].get("name"), "역까지_도보_분": c["raw"].get("station_access"),
-        "편의시설": c["convenience"], "주점_수": c["raw"].get("quiet"),
+        "월교통비_만원": _r(c["cost"]["fare_month"]), "실거래_표본": _i(c["cost"]["samples"]),
+        "통근_분": _i(c["raw"].get("commute")), "통근_수단": c["commute"].get("mode"), "노선": c["commute"].get("lines"),
+        "가까운역": c["station"].get("name"), "역까지_도보_분": _i(c["raw"].get("station_access")),
+        "편의시설_개수": {k: _i(v) for k, v in c["convenience"].items()}, "주점_수": _i(c["raw"].get("quiet")),
         "강점": _strengths(e), "주의": e["flags"],
     }
 
@@ -238,12 +253,17 @@ def violation_text(v: dict) -> str:
     if v["constraint"] == "budget":
         return f"예산 안 실거래가 {v.get('in_budget')}/{v.get('samples')}건으로 기준(3건)보다 적음"
     if v["constraint"] == "commute":
-        return f"통근 {_r(v.get('value'))}분이 한도 {_r(v.get('limit'))}분을 넘음"
+        return f"통근 {_i(v.get('value'))}분이 한도 {_i(v.get('limit'))}분을 넘음"
     return f"월 총비용 {_r(v.get('value'))}만 원이 한도 {_r(v.get('limit'))}만 원을 넘음"
 
 
+def _cons_val(k: str, v) -> str:
+    unit = CONSTRAINT_TEXT[k][1]
+    return f"{by_unit(v, unit)}{unit}"
+
+
 def relax_text(relax: dict) -> dict:
-    return {CONSTRAINT_TEXT[k][0]: f"{_r(v)}{CONSTRAINT_TEXT[k][1]}" for k, v in relax.items() if k in CONSTRAINT_TEXT}
+    return {CONSTRAINT_TEXT[k][0]: _cons_val(k, v) for k, v in relax.items() if k in CONSTRAINT_TEXT}
 
 
 def target_facts(e: dict) -> dict:
@@ -277,13 +297,18 @@ def compare_items(a: dict, b: dict) -> list[dict]:
     items = []
     for label, key, unit, lower_better in COMPARE_FIELDS:
         va, vb = fa.get(key), fb.get(key)
-        diff = round(va - vb, 1) if isinstance(va, (int, float)) and isinstance(vb, (int, float)) else None
+        diff = by_unit(va - vb, unit) if isinstance(va, (int, float)) and isinstance(vb, (int, float)) else None
         better = None
         if diff:
             better = a["name"] if (diff < 0) == lower_better else b["name"]
-        items.append({"label": label, "unit": unit, "a": _r(va), "b": _r(vb), "diff": diff,
+        items.append({"label": label, "unit": unit, "a": by_unit(va, unit), "b": by_unit(vb, unit), "diff": diff,
                       "abs_diff": abs(diff) if diff is not None else None, "better": better})
     return items
+
+
+def factor_points(a: dict, b: dict) -> list[dict]:
+    """두 동네의 요인별 점수 (대화창 막대 차트용). 합 = 각 동네 점수."""
+    return [{"key": k, "label": LABEL[k], "a": _r(a["contrib"][k]), "b": _r(b["contrib"][k])} for k in LABEL]
 
 
 def compare_facts(a: dict, b: dict) -> dict:
@@ -296,8 +321,8 @@ def compare_facts(a: dict, b: dict) -> dict:
 
 def _summary_row(e: dict) -> dict:
     return {"순위": e.get("rank"), "동": e["name"], "점수": _r(e["score"]),
-            "월총비용_만원": _r(e["raw"].get("monthly_cost")), "통근_분": e["raw"].get("commute"),
-            "역까지_도보_분": e["raw"].get("station_access")}
+            "월총비용_만원": _r(e["raw"].get("monthly_cost")), "통근_분": _i(e["raw"].get("commute")),
+            "역까지_도보_분": _i(e["raw"].get("station_access"))}
 
 
 def answer_facts(res: Result, *, question: str, destination: dict | None, params: dict, targets: list[dict],
@@ -307,7 +332,7 @@ def answer_facts(res: Result, *, question: str, destination: dict | None, params
         "user_question": question,
         "목적지": destination.get("label") if destination else None,
         "현재_조건": {
-            "필수조건": {CONSTRAINT_TEXT[k][0]: f"{_r(v)}{CONSTRAINT_TEXT[k][1]}" for k, v in res.constraints.items()},
+            "필수조건": {CONSTRAINT_TEXT[k][0]: _cons_val(k, v) for k, v in res.constraints.items()},
             "가중치_단계": {LABEL[k]: v for k, v in res.levels.items()},
             "주택_유형": params.get("house_types"), "원룸_면적_상한_m2": params.get("max_area_m2"),
             "신규계약만": params.get("new_contracts_only"),
@@ -370,8 +395,8 @@ def attachment_row(e: dict) -> dict:
         "status": f"{e['rank']}위" if e.get("rank") else "조건 밖",
         "excluded": not e.get("rank"),
         "score": _r(e["score"]), "monthly_cost": _r(e["raw"].get("monthly_cost")),
-        "commute": e["raw"].get("commute"), "station_walk": e["raw"].get("station_access"),
-        "bars": e["raw"].get("quiet"),
+        "commute": _i(e["raw"].get("commute")), "station_walk": _i(e["raw"].get("station_access")),
+        "bars": _i(e["raw"].get("quiet")),
         "reason": "; ".join(violation_text(v) for v in e.get("violations") or []) or None,
     }
 
@@ -381,8 +406,33 @@ def attachments(*, rows: list[dict], title: str, guides_: list[dict]) -> list[di
     if rows:
         att = {"kind": "dongs", "title": title, "rows": [attachment_row(e) for e in rows]}
         if len(rows) == 2:
-            att["compare"] = {"a": rows[0]["name"], "b": rows[1]["name"], "items": compare_items(rows[0], rows[1])}
+            att["compare"] = {"a": rows[0]["name"], "b": rows[1]["name"], "items": compare_items(rows[0], rows[1]),
+                              "factors": factor_points(rows[0], rows[1])}
         out.append(att)
     if guides_:
         out.append({"kind": "guides", "title": "직접 확인하는 방법", "items": guides_})
     return out
+
+
+# ------------------------------------------------------------------ 오른쪽 화면 연동
+COMPARE_WORDS = ("비교", "차이", "vs", "어디가 더", "어느 쪽", "어느 곳", "뭐가 더", "중에", "나아")
+TRADEOFF_WORDS = ("통근", "출퇴근", "출근", "비용", "월세", "보증금", "교통비", "돈", "가격", "싸", "비싸")
+
+
+def focus_for(text: str, targets: list[dict]) -> dict | None:
+    """답변에 맞춰 오른쪽 화면을 어디로 옮길지.
+
+    - 두 곳 이상이거나 비교 질문 → '후보 비교' 탭에 그 동네들
+    - 통근·비용 질문 → '비용·통근' 산점도에서 그 동네 강조 (산점도에 있는 통과한 동만)
+    - 한 곳 → 지도에서 그 동네 선택
+    """
+    if not targets:
+        return None
+    t = (text or "").lower()
+    codes = [e["dong_code"] for e in targets]
+    if len(targets) >= 2 or any(w in t for w in COMPARE_WORDS):
+        return {"tab": "compare", "dong_codes": codes[:3]}
+    ranked = [e["dong_code"] for e in targets if e.get("rank")]
+    if ranked and any(w in t for w in TRADEOFF_WORDS):
+        return {"tab": "tradeoff", "dong_codes": ranked}
+    return {"tab": "map", "dong_codes": codes[:1]}
