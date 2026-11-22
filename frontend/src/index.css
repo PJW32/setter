@@ -29,7 +29,7 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); }
-button, textarea, input { font: inherit; color: inherit; }
+button, textarea, input, select { font: inherit; color: inherit; }
 a { color: var(--ink); text-underline-offset: 3px; }
 :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .num { font-variant-numeric: tabular-nums; text-align: right; }
@@ -41,7 +41,7 @@ a { color: var(--ink); text-underline-offset: 3px; }
   display: grid;
   grid-template-columns: var(--chat-w) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
-  height: 100vh;
+  height: 100dvh;
 }
 .sign { grid-column: 1 / -1; }
 .chat-col { border-right: 1px solid var(--rule); background: var(--surface); min-height: 0; }
@@ -124,13 +124,17 @@ a { color: var(--ink); text-underline-offset: 3px; }
 /* ------------------------------------------------------------------ 대화 */
 .chat { display: flex; flex-direction: column; height: 100%; }
 .chat-log { flex: 1; overflow-y: auto; padding: 20px 20px 8px; display: flex; flex-direction: column; gap: 12px; }
-.chat-intro p { margin: 0 0 8px; }
+.chat-intro h2 { margin: 0 0 4px; font-size: 21px; text-wrap: balance; }
+.chat-intro p { margin: 0 0 16px; color: var(--muted); text-wrap: pretty; }
 .examples { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
 .examples button {
   width: 100%; text-align: left; background: var(--bg); border: 1px solid transparent;
   border-radius: var(--r-sm); padding: 8px 10px; cursor: pointer; font-size: 13.5px; line-height: 1.5;
 }
-.examples button:hover { border-color: var(--rule); }
+.examples button:hover:not(:disabled) { border-color: var(--ink); }
+.examples button:disabled { cursor: default; opacity: 0.7; }
+.follow-ups { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.follow-ups button { font-size: 13px; padding: 4px 10px; min-height: 36px; border-radius: 999px; }
 
 .bubble { max-width: 92%; padding: 9px 13px; border-radius: 14px; white-space: pre-wrap; }
 .bubble-user { align-self: flex-end; background: var(--ink); color: #fff; border-bottom-right-radius: 4px; }
@@ -177,32 +181,40 @@ a { color: var(--ink); text-underline-offset: 3px; }
 }
 .tab:hover { color: var(--ink); }
 .tab.is-active { color: var(--ink); border-bottom-color: var(--brand); }
-.tabs-meta { margin-left: auto; font-size: 12.5px; color: var(--muted); padding-bottom: 8px; }
+.result-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; }
+.result-heading h1 { margin: 0; font-size: clamp(21px, 3vw, 30px); line-height: 1.3; text-wrap: balance; }
+.result-heading p { margin: 4px 0 0; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 .stage { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r-md); min-height: 440px; overflow: hidden; }
-.empty { display: grid; justify-items: center; padding: clamp(24px, 5vw, 56px) 16px; text-align: center; }
-.empty-title { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 8px; }
-.empty-mascot { display: block; width: min(160px, 42vw); height: auto; border-radius: 18px; margin-bottom: 16px; }
-.empty-factors { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; list-style: none; padding: 0; margin: 0; }
-.empty-factors li { border-radius: 999px; padding: 4px 10px; background: var(--sel); font-size: 13px; }
+.empty { display: grid; grid-template-columns: minmax(0, 1fr) minmax(110px, 31%); align-items: center; gap: 24px; padding: clamp(24px, 5vw, 64px); background: var(--bg); }
+.empty-copy p { color: var(--muted); max-width: 33ch; margin: 0 0 20px; text-wrap: pretty; }
+.empty-title { font-size: clamp(24px, 3.4vw, 44px); line-height: 1.2; text-wrap: balance; margin: 0 0 12px; }
+.empty-mascot { display: block; justify-self: center; width: 100%; max-width: 224px; height: auto; }
+.empty-factors { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; list-style: none; padding: 16px 0 0; margin: 0; border-top: 1px solid var(--rule); }
+.empty-factors li { border: 1px solid var(--rule); border-radius: 999px; padding: 4px 10px; background: var(--surface); font-size: 13px; }
+@media (max-width: 520px) {
+  .empty { grid-template-columns: minmax(0, 1fr); text-align: center; gap: 16px; }
+  .empty-copy p { margin-inline: auto; }
+  .empty-mascot { grid-row: 1; max-width: 116px; }
+  .empty-factors { justify-content: center; }
+}
 
 /* ------------------------------------------------------------------ 지도 */
 .map-wrap { position: relative; }
 .map { height: 520px; width: 100%; }
-/* 바탕 지도는 회색조로 눌러서 데이터 점이 먼저 보이게 */
-.map .leaflet-tile-pane { filter: grayscale(1) contrast(0.92) brightness(1.06); }
 .map-legend {
   position: absolute; left: 12px; bottom: 12px; z-index: 500; background: rgba(255, 255, 255, 0.94);
   border-radius: var(--r-sm); padding: 4px 10px; font-size: 12px; display: flex; align-items: center; gap: 6px;
 }
-.legend-ramp { width: 64px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, #b7d3f6, #2a78d6, #104281); }
+.legend-ramp { width: 64px; height: 8px; border-radius: 4px; }
 .legend-grey { width: 8px; height: 8px; border-radius: 50%; background: #b9c2c6; margin-left: 8px; }
 .pin {
   display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;
-  background: var(--ink); color: #fff; font-weight: 700; font-size: 14px;
+  background: var(--brand); color: var(--ink); font-weight: 700; font-size: 14px;
   border: 3px solid #fff; box-shadow: 0 0 0 1px var(--ink);
 }
-.pin-active { box-shadow: 0 0 0 3px #2a78d6; }
+.pin-active { box-shadow: 0 0 0 3px #74511a; }
+.map-tip { text-align: center; white-space: normal; width: max-content; max-width: min(245px, 65vw); }
 .dest-pin {
   position: absolute; transform: translate(-50%, -130%); white-space: nowrap;
   background: #fff; color: var(--ink); border: 2px solid var(--ink); border-radius: 999px;
@@ -217,6 +229,10 @@ a { color: var(--ink); text-underline-offset: 3px; }
 
 /* ------------------------------------------------------------------ 순위표 */
 .ranking { padding: 14px 18px 18px; }
+.ranking-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr)); gap: 10px; margin-bottom: 12px; }
+.ranking-filters label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; }
+.ranking-filters input, .ranking-filters select { width: 100%; min-width: 0; min-height: 44px; padding: 6px 10px; border: 1px solid var(--rule); border-radius: var(--r-sm); background: var(--surface); }
+.ranking-filters + .fine { margin-bottom: 10px; }
 .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12.5px; margin-bottom: 10px; }
 .legend-item { display: inline-flex; align-items: center; gap: 6px; }
 .legend-w { color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -227,9 +243,7 @@ a { color: var(--ink); text-underline-offset: 3px; }
 .rank-table th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12.5px; padding: 6px 8px; border-bottom: 1px solid var(--rule); }
 .rank-table th.num { text-align: right; }
 .rank-table td { padding: 8px; border-bottom: 1px solid var(--rule-soft); vertical-align: middle; }
-.rank-table tbody tr { cursor: pointer; }
 .rank-table tbody tr:hover { background: #f6f8f9; }
-.rank-table tbody tr.is-selected { background: var(--sel); }
 .rank-no { width: 40px; font-weight: 700; }
 .col-score { width: 34%; }
 .dong-name { font-weight: 500; margin-right: 6px; }
@@ -267,7 +281,6 @@ a { color: var(--ink); text-underline-offset: 3px; }
   .sign-plate { flex-wrap: wrap; }
   .conditions { flex-basis: 100%; }
   .tabs { flex-wrap: wrap; }
-  .tabs-meta { width: 100%; }
 }
 .card { padding: 16px 18px; border-right: 1px solid var(--rule-soft); display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; }
 .card:last-child { border-right: 0; }
@@ -336,3 +349,4 @@ a { color: var(--ink); text-underline-offset: 3px; }
 .sources dl { margin: 0; display: grid; gap: 2px; }
 .sources dl div { display: grid; grid-template-columns: 80px 1fr; gap: 8px; }
 .sources dd { margin: 0; }
+.sources summary { width: fit-content; cursor: pointer; color: var(--ink); padding: 4px 0; }

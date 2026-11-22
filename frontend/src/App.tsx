@@ -16,8 +16,8 @@ type Tab = 'map' | 'table' | 'tradeoff' | 'compare'
 const TABS: { key: Tab; label: string }[] = [
   { key: 'map', label: '지도' },
   { key: 'table', label: '순위표' },
-  { key: 'tradeoff', label: '시간과 돈' },
-  { key: 'compare', label: '상위 3곳 비교' },
+  { key: 'tradeoff', label: '비용·통근' },
+  { key: 'compare', label: '후보 비교' },
 ]
 
 export default function App() {
@@ -97,6 +97,15 @@ export default function App() {
   const shown = hypo ?? result
   const candidates = shown ? [...shown.ranked, ...shown.excluded] : []
   const activeCandidate = candidates.find((d) => d.dong_code === selected) ?? shown?.ranked[0]
+  function focusSearch() {
+    setMobileView('chat')
+    requestAnimationFrame(() => document.getElementById('condition-input')?.focus())
+  }
+
+  function openComparison(code: string) {
+    setSelected(code)
+    setTab('compare')
+  }
 
   return (
     <div className="app" data-mobile-view={error ? 'results' : mobileView}>
@@ -108,11 +117,13 @@ export default function App() {
       </div>}
 
       <aside className="chat-col" aria-label="대화">
-        <Chat items={items} busy={busy} onSend={send} disabled={!sessionId} />
+        <Chat items={items} busy={busy} onSend={send} disabled={!sessionId} hasResult={!!result} />
       </aside>
 
       <main className="work-col">
-        {error && <p className="banner banner-error" role="alert">{error}</p>}
+        {error && <div className="banner banner-error" role="alert">
+          {error} <button type="button" className="link-btn" onClick={() => load(false)}>다시 연결</button>
+        </div>}
 
         {hypo && (
           <p className="banner banner-hypo">
@@ -127,16 +138,21 @@ export default function App() {
         ))}
         {shown?.notes.map((n) => <p key={n} className="banner banner-warn">{n}</p>)}
 
-        {shown && <nav className="tabs" role="tablist" aria-label="결과 보기">
+        {shown && <header className="result-heading">
+          <div>
+            <h1>{shown.destination.place_name || shown.destination.key} 주변 동네</h1>
+            <p>후보 {shown.universe_size}곳 · 비교 {shown.ranked.length}곳</p>
+          </div>
+          <button type="button" className="btn-ghost" onClick={focusSearch}>조건 바꾸기</button>
+        </header>}
+
+        {shown && <nav className="tabs" aria-label="결과 보기">
           {TABS.map((t) => (
-            <button key={t.key} role="tab" aria-selected={tab === t.key}
+            <button type="button" key={t.key} aria-pressed={tab === t.key}
               className={tab === t.key ? 'tab is-active' : 'tab'} onClick={() => setTab(t.key)}>
               {t.label}
             </button>
           ))}
-          <span className="tabs-meta">
-            후보 {shown.universe_size}곳 · 비교 {shown.ranked.length}곳
-          </span>
         </nav>}
 
         <section className="stage">
@@ -144,14 +160,21 @@ export default function App() {
             <div className="mascot-status">
               <img src="/setter-mascot-thinking.png" width="48" height="54" alt="" />
               <p>추천 후보가 없어요. 예산이나 통근 조건을 조정해 보세요.</p>
+              <button type="button" className="link-btn" onClick={focusSearch}>조건 바꾸기</button>
             </div>
           )}
           {!shown ? (
             <div className="empty">
+              <div className="empty-copy">
+                <h1 className="empty-title">내 일상에 맞는 동네 찾기</h1>
+                <p>출근하는 곳과 예산을 말해 주세요. 동네마다 비용과 통근 시간을 비교해 볼 수 있어요.</p>
+                <button type="button" className="btn-primary" onClick={focusSearch} disabled={!sessionId}>조건 입력하기</button>
+              </div>
               <img className="empty-mascot" src="/setter-mascot.png" width="384" height="434" alt="" />
-              <h1 className="empty-title">출근지와 예산에 맞는 동네 찾기</h1>
               <ul className="empty-factors" aria-label="비교 기준">
-                {FACTORS.map((factor) => <li key={factor.key}>{factor.label}</li>)}
+                {FACTORS.map((factor) => (
+                  <li key={factor.key}><span className="pref-dot" style={{ background: factor.color }} />{factor.label}</li>
+                ))}
               </ul>
             </div>
           ) : tab === 'map' ? (
@@ -164,10 +187,7 @@ export default function App() {
                       <img src="/setter-mascot-guide.png" width="40" height="45" alt="" />
                       <h2>{activeCandidate.name} <small>{activeCandidate.sgg}</small></h2>
                     </div>
-                    <button type="button" className="link-btn" onClick={() => {
-                      setSelected(activeCandidate.dong_code)
-                      setTab('compare')
-                    }}>비교에서 보기</button>
+                    <button type="button" className="btn-ghost" onClick={() => openComparison(activeCandidate.dong_code)}>비교에서 보기</button>
                   </header>
                   <dl>
                     {FACTORS.map((f) => (
@@ -181,7 +201,7 @@ export default function App() {
               )}
             </>
           ) : tab === 'table' ? (
-            <RankingTable result={shown} selected={selected} onSelect={setSelected} />
+            <RankingTable result={shown} onCompare={openComparison} />
           ) : tab === 'tradeoff' ? (
             <TradeoffChart result={shown} selected={selected} onSelect={setSelected} />
           ) : (
@@ -200,11 +220,14 @@ export default function App() {
               실거래가는 {shown.rent_period.replace(/(\d{4})(\d{2})~(\d{4})(\d{2})/, '$1년 $2월 ~ $3년 $4월')} 계약 기준 시세 참고용이며,
               현재 매물 가격이 아닙니다. 관리비·치안·집 상태는 데이터가 없어 직접 확인해야 해요.
             </p>
-            <dl>
+            <details>
+              <summary>데이터 출처 보기</summary>
+              <dl>
               {Object.entries(shown.sources).map(([k, v]) => (
                 <div key={k}><dt>{k}</dt><dd>{v}</dd></div>
               ))}
-            </dl>
+              </dl>
+            </details>
           </footer>
         )}
       </main>
