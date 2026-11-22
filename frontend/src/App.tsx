@@ -44,7 +44,7 @@ export default function App() {
       setLogs([])
       setSelected(null)
       setMobileView(s.result ? 'results' : 'chat')
-      setItems(s.messages.map((m) => ({ id: ++idRef.current, kind: m.role, text: m.text, source: m.source })))
+      setItems(s.messages.map((m) => ({ id: ++idRef.current, kind: m.role, text: m.text, source: m.source, attachments: m.attachments })))
       setError(null)
     } catch (e) {
       setError(`서버에 연결하지 못했어요. 백엔드가 켜져 있는지 확인해 주세요. (${(e as Error).message})`)
@@ -72,7 +72,7 @@ export default function App() {
         }
         break
       case 'message':
-        setItems((it) => [...it, { id: ++idRef.current, kind: 'assistant', text: ev.text, source: ev.source }])
+        setItems((it) => [...it, { id: ++idRef.current, kind: 'assistant', text: ev.text, source: ev.source, attachments: ev.attachments }])
         break
       case 'error':
         setItems((it) => [...it, { id: ++idRef.current, kind: 'error', text: ev.detail }])
@@ -107,6 +107,13 @@ export default function App() {
     setTab('compare')
   }
 
+  // 답변 속 동네 표에서 "지도에서 보기"
+  function focusDong(code: string) {
+    setSelected(code)
+    setTab('map')
+    setMobileView('results')
+  }
+
   return (
     <div className="app" data-mobile-view={error ? 'results' : mobileView}>
       <StationSign state={state} busy={busy} onReset={() => load(true)} />
@@ -117,7 +124,7 @@ export default function App() {
       </div>}
 
       <aside className="chat-col" aria-label="대화">
-        <Chat items={items} busy={busy} onSend={send} disabled={!sessionId} hasResult={!!result} />
+        <Chat items={items} busy={busy} onSend={send} disabled={!sessionId} hasResult={!!result} onFocusDong={focusDong} />
       </aside>
 
       <main className="work-col">

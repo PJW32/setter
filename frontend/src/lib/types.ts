@@ -2,7 +2,7 @@
 export interface SessionView {
   session_id: string;
   state: StateSnapshot;
-  messages: {role: "user" | "assistant"; text: string; source?: "llm" | "template"}[];
+  messages: {role: "user" | "assistant"; text: string; source?: "llm" | "template"; attachments?: Attachment[]}[];
   result: ResultPayload | null;   // 마지막 순위 (diff 는 null)
 }
 
@@ -33,14 +33,30 @@ export type AgentEvent =
   | {type: "interpretation"; t: number; intent: Intent; what_if: boolean;
      applied: Applied[]; rejected: Rejected[]; unsupported: string[];
      comparisons: {more: FactorKey; less: FactorKey; evidence: string}[]; comparison_fixes: string[];
+     guides?: Guide[];
      destination: Destination | null; follow_up: string | null; state: StateSnapshot}
   | {type: "result"; t: number; what_if: boolean; payload: ResultPayload}
-  | {type: "message"; t: number; text: string; source: "llm" | "template"}
+  | {type: "message"; t: number; text: string; source: "llm" | "template"; attachments?: Attachment[]}
   | {type: "error"; t: number; detail: string}
   | {type: "done"; t: number};
 
-export type LogStep = "extract" | "destination" | "region" | "collect" | "commute" | "dataset" | "score" | "tradeoff" | "explain";
-export type Intent = "update" | "what_if" | "question" | "confirm" | "other";
+export type LogStep = "extract" | "reply" | "answer" | "destination" | "region" | "collect" | "commute" | "dataset" | "score" | "tradeoff" | "explain";
+export type Intent = "update" | "what_if" | "question" | "confirm" | "smalltalk" | "other";
+
+/** 데이터로 구할 수 없는 정보를 직접 확인하는 방법 */
+export interface Guide {topic: string; how: string; links: {label: string; url: string}[]}
+
+/** 답변과 함께 대화창에 보여주는 자료 */
+export interface AttachmentRow {
+  dong_code: string; name: string; sgg: string; status: string; excluded: boolean;
+  score: number | null; monthly_cost: number | null; commute: number | null; station_walk: number | null;
+  bars: number | null; reason: string | null;
+}
+export interface CompareItem {label: string; unit: string; a: number | null; b: number | null; diff: number | null;
+  abs_diff: number | null; better: string | null}
+export type Attachment =
+  | {kind: "dongs"; title: string; rows: AttachmentRow[]; compare?: {a: string; b: string; items: CompareItem[]}}
+  | {kind: "guides"; title: string; items: Guide[]};
 
 export interface Applied {
   type: "constraint" | "param" | "preference";
