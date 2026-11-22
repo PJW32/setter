@@ -202,20 +202,19 @@ a { color: var(--ink); text-underline-offset: 3px; }
 /* ------------------------------------------------------------------ 지도 */
 .map-wrap { position: relative; }
 .map { height: 520px; width: 100%; }
-/* 바탕 지도는 회색조로 눌러서 데이터 점이 먼저 보이게 */
-.map .leaflet-tile-pane { filter: grayscale(1) contrast(0.92) brightness(1.06); }
 .map-legend {
   position: absolute; left: 12px; bottom: 12px; z-index: 500; background: rgba(255, 255, 255, 0.94);
   border-radius: var(--r-sm); padding: 4px 10px; font-size: 12px; display: flex; align-items: center; gap: 6px;
 }
-.legend-ramp { width: 64px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, #b7d3f6, #2a78d6, #104281); }
+.legend-ramp { width: 64px; height: 8px; border-radius: 4px; }
 .legend-grey { width: 8px; height: 8px; border-radius: 50%; background: #b9c2c6; margin-left: 8px; }
 .pin {
   display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;
-  background: var(--ink); color: #fff; font-weight: 700; font-size: 14px;
+  background: var(--brand); color: var(--ink); font-weight: 700; font-size: 14px;
   border: 3px solid #fff; box-shadow: 0 0 0 1px var(--ink);
 }
-.pin-active { box-shadow: 0 0 0 3px #2a78d6; }
+.pin-active { box-shadow: 0 0 0 3px #74511a; }
+.map-tip { text-align: center; white-space: normal; width: max-content; max-width: min(245px, 65vw); }
 .dest-pin {
   position: absolute; transform: translate(-50%, -130%); white-space: nowrap;
   background: #fff; color: var(--ink); border: 2px solid var(--ink); border-radius: 999px;

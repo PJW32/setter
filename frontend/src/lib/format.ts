@@ -40,7 +40,9 @@ export function violationText(v: Violation): string {
   const relax = (Object.entries(v.relax_to) as [ConstraintKey, number][]).map(([k, n]) => constraintText(k, n))
   return relax.length ? `${reason} · ${relax.join(', ')}로 완화하면 포함` : reason
 }
+export const MAP_SCORE_COLORS = ['#e9deff', '#35205f'] as const
+
 export function scoreColor(score: number, low: number, high: number): string {
   const ratio = high > low ? Math.max(0, Math.min(1, (score - low) / (high - low))) : 0.5
-  return `hsl(215, ${35 + ratio * 25}%, ${82 - ratio * 48}%)`
+  return `color-mix(in srgb, ${MAP_SCORE_COLORS[0]}, ${MAP_SCORE_COLORS[1]} ${ratio * 100}%)`
 }
