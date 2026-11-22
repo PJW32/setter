@@ -36,7 +36,7 @@ function Card({ d, rate }: { d: DongCard; rate: number }) {
         <h4>월 총비용 {c.monthly_total != null ? won(c.monthly_total) : '데이터 부족'}</h4>
         <dl className="kv">
           <div><dt>월세 중앙값</dt><dd>{won(c.median_rent)}</dd></div>
-          <div><dt>보증금 중앙값</dt><dd>{won(c.median_deposit)} <small>(월 약 {fmt(depositMonthly)}만 원으로 환산)</small></dd></div>
+          <div><dt>보증금 중앙값</dt><dd>{won(c.median_deposit)} {depositMonthly != null && <small>(월 약 {fmt(depositMonthly)}만 원으로 환산)</small>}</dd></div>
           <div><dt>월 교통비</dt><dd>{c.fare_month != null ? won(c.fare_month) : '요금 정보 없음'}</dd></div>
           <div><dt>실거래 표본</dt><dd>{c.samples}건</dd></div>
         </dl>
@@ -57,10 +57,12 @@ function Card({ d, rate }: { d: DongCard; rate: number }) {
         <h4>생활</h4>
         <dl className="kv">
           <div><dt>가까운 역</dt><dd>{d.station.name ? `${d.station.name} · ${rawText('station_access', d.raw.station_access)} (추정)` : '3km 안에 없음'}</dd></div>
-          <div><dt>편의시설</dt><dd>{Object.entries(d.convenience).map(([k, v]) => `${k} ${v}`).join(' · ')}</dd></div>
-          <div><dt>주변 주점</dt><dd>{d.bars.count ?? '–'}곳 (반경 500m)</dd></div>
+          <div><dt>생활 편의 점수</dt><dd>{rawText('convenience', d.raw.convenience)}</dd></div>
+          <div><dt>편의시설</dt><dd>{Object.entries(d.convenience).map(([k, v]) => `${k} ${v}곳`).join(' · ') || '데이터 없음'}</dd></div>
+          <div><dt>주변 주점</dt><dd>{d.bars.count == null ? '데이터 없음' : `${d.bars.count}곳 (반경 500m)`}</dd></div>
         </dl>
       </section>
+      <p className="fine">조용함은 주변 주점 수로 추정하며, 실제 소음이나 밤길 안전을 뜻하지 않아요.</p>
 
       <section className="card-sec">
         <h4>점수 구성</h4>

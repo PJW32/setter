@@ -9,6 +9,7 @@ import RankingTable from './components/RankingTable'
 import StationSign from './components/StationSign'
 import TradeoffChart from './components/TradeoffChart'
 import { createSession, restoreSession, sendMessage } from './lib/api'
+import { FACTORS } from './lib/format'
 import type { AgentEvent, LogEvent, ResultPayload, StateSnapshot } from './lib/types'
 
 type Tab = 'map' | 'table' | 'tradeoff' | 'compare'
@@ -116,28 +117,26 @@ export default function App() {
         ))}
         {shown?.notes.map((n) => <p key={n} className="banner banner-warn">{n}</p>)}
 
-        <nav className="tabs" role="tablist" aria-label="결과 보기">
+        {shown && <nav className="tabs" role="tablist" aria-label="결과 보기">
           {TABS.map((t) => (
             <button key={t.key} role="tab" aria-selected={tab === t.key}
               className={tab === t.key ? 'tab is-active' : 'tab'} onClick={() => setTab(t.key)}>
               {t.label}
             </button>
           ))}
-          {shown && (
-            <span className="tabs-meta">
-              후보 {shown.universe_size}곳 중 조건을 만족한 {shown.ranked.length}곳
-            </span>
-          )}
-        </nav>
+          <span className="tabs-meta">
+            후보 {shown.universe_size}곳 · 비교 {shown.ranked.length}곳
+          </span>
+        </nav>}
 
         <section className="stage">
           {!shown ? (
             <div className="empty">
-              <p className="empty-title">출근할 곳과 예산을 말하면, 여기에 동네 순위가 나와요.</p>
-              <p className="empty-body">
-                매물이 아니라 동네를 비교합니다. 월세 실거래가, 대중교통 시간, 역까지 거리, 편의시설, 주변 주점 수를
-                숫자로 보여주고, 왜 그 순서인지 설명해요.
-              </p>
+              <img className="empty-mascot" src="/setter-mascot.png" width="515" height="584" alt="" />
+              <h1 className="empty-title">출근지와 예산에 맞는 동네 찾기</h1>
+              <ul className="empty-factors" aria-label="비교 기준">
+                {FACTORS.map((factor) => <li key={factor.key}>{factor.label}</li>)}
+              </ul>
             </div>
           ) : tab === 'map' ? (
             <MapView result={shown} selected={selected} onSelect={setSelected} />

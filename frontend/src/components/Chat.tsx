@@ -10,9 +10,8 @@ export type ChatItem =
 
 const EXAMPLES = [
   '판교역으로 출근해요. 보증금 1000에 월세 60 넘으면 안 되고, 싼 게 제일 중요해요.',
-  '통근은 50분까지 괜찮고, 조용한 동네였으면 좋겠어요.',
-  '아까보다 역 가까운 게 더 중요해요.',
-  '통근 30분 이내로 줄이면 어떻게 돼?',
+  '강남역까지 40분 이내면 좋겠어요. 지하철역이 가깝고 마트가 많은 동네를 찾아줘.',
+  '광화문역으로 출근해요. 월세는 70만 원까지, 주변에 주점이 적은 곳이면 좋겠어요.',
 ]
 
 export default function Chat({ items, busy, disabled, onSend }: {
@@ -35,8 +34,7 @@ export default function Chat({ items, busy, disabled, onSend }: {
       <div className="chat-log" aria-live="polite">
         {items.length === 0 && (
           <div className="chat-intro">
-            <p>어디로 출근하는지, 보증금과 월세는 얼마까지인지, 무엇이 중요한지 평소 말하듯 적어 주세요.</p>
-            <p className="chat-intro-sub">예시를 누르면 입력창에 들어가요.</p>
+            <p>출근지, 예산, 중요하게 보는 조건을 적어 주세요.</p>
             <ul className="examples">
               {EXAMPLES.map((e) => (
                 <li key={e}><button onClick={() => setText(e)}>{e}</button></li>
@@ -71,6 +69,7 @@ export default function Chat({ items, busy, disabled, onSend }: {
           }}
           placeholder="예: 강남역으로 출근하고 월세는 70까지 괜찮아요"
           rows={3}
+          maxLength={4000}
           disabled={disabled}
           aria-label="조건 입력"
         />
