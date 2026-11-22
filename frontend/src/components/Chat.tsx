@@ -14,11 +14,23 @@ const EXAMPLES = [
   '광화문역으로 출근해요. 월세는 70만 원까지, 주변에 주점이 적은 곳이면 좋겠어요.',
 ]
 
-export default function Chat({ items, busy, disabled, onSend }: {
-  items: ChatItem[]; busy: boolean; disabled: boolean; onSend: (t: string) => void
+const FOLLOW_UPS = [
+  ['예산 조정', '월세를 60만 원 이하로 바꿔줘.'],
+  ['통근 시간 비교', '통근을 30분 이내로 줄이면 어떤 동네가 나와?'],
+  ['조용한 동네', '주변 주점이 적은 동네를 더 중요하게 봐줘.'],
+]
+
+export default function Chat({ items, busy, disabled, onSend, hasResult }: {
+  items: ChatItem[]; busy: boolean; disabled: boolean; onSend: (t: string) => void; hasResult: boolean
 }) {
   const [text, setText] = useState('')
   const endRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  function fillPrompt(prompt: string) {
+    setText(prompt)
+    inputRef.current?.focus()
+  }
 
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }) }, [items, busy])
 
@@ -34,10 +46,11 @@ export default function Chat({ items, busy, disabled, onSend }: {
       <div className="chat-log" aria-live="polite">
         {items.length === 0 && (
           <div className="chat-intro">
-            <p>출근지, 예산, 중요하게 보는 조건을 적어 주세요.</p>
+            <h2>어떤 동네를 찾고 있나요?</h2>
+            <p>아래 예시를 골라 내 조건에 맞게 바꿔 보세요.</p>
             <ul className="examples">
               {EXAMPLES.map((e) => (
-                <li key={e}><button onClick={() => setText(e)}>{e}</button></li>
+                <li key={e}><button type="button" disabled={disabled || !!text.trim()} onClick={() => fillPrompt(e)}>{e}</button></li>
               ))}
             </ul>
           </div>
@@ -60,7 +73,16 @@ export default function Chat({ items, busy, disabled, onSend }: {
       </div>
 
       <form className="composer" onSubmit={(e) => { e.preventDefault(); submit() }}>
+        {hasResult && !busy && !text.trim() && (
+          <div className="follow-ups" role="group" aria-label="조건 변경 예시">
+            {FOLLOW_UPS.map(([label, prompt]) => (
+              <button type="button" className="btn-ghost" key={label} disabled={disabled} onClick={() => fillPrompt(prompt)}>{label}</button>
+            ))}
+          </div>
+        )}
         <textarea
+          id="condition-input"
+          ref={inputRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
