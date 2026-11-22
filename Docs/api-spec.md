@@ -1,0 +1,239 @@
+# API 명세서
+
+- 서버: FastAPI (`backend/main.py`), 기본 `http://localhost:8000`
+- 모든 경로는 `/api` 로 시작한다. 빌드된 프론트(`frontend/dist`)는 같은 서버의 `/` 에서 제공한다
+- 요청·응답 본문은 JSON (UTF-8). 메시지 전송만 **이벤트 스트림**(`text/event-stream`)으로 응답한다
+- 인증 없음 (해커톤 MVP). 외부 API 키는 서버만 갖는다
+- 금액 단위는 **만원**, 시간은 **분**, 요금(`fare`)만 **원**
+- 개발 중 CORS 허용: `http://localhost:5173`, `http://127.0.0.1:5173`
+
+## 목록
+
+| # | 메서드 | 경로 | 설명 |
+|---|---|---|---|
+| 1 | GET | `/api/health` | 서버·키·저장소 상태 |
+| 2 | GET | `/api/meta` | 요인·단계 목록, 수집된 시군구 |
+| 3 | POST | `/api/sessions` | 대화 세션 만들기 |
+| 4 | GET | `/api/sessions/{session_id}` | 세션 상태·대화·마지막 결과 |
+| 5 | POST | `/api/sessions/{session_id}/messages` | 발화 보내기 → 이벤트 스트림 |
+| 6 | POST | `/api/sessions/{session_id}/what-if` | 가정 비교 (상태 안 바뀜) |
+
+## 오류
+
+| 상태 | 언제 | 본문 |
+|---|---|---|
+| 400 | 빈 메시지, 순위가 없는데 what-if | `{"detail": "빈 메시지"}` |
+| 404 | 없는 세션 (서버 재시작 포함) | `{"detail": "세션이 없습니다"}` → 프론트는 새 세션을 만든다 |
+| 422 | 본문 형식 오류 | FastAPI 기본 검증 오류 |
+
+이벤트 스트림 도중의 오류는 HTTP 상태가 아니라 `error` 이벤트로 온다.
+
+---
+
+## 1. GET `/api/health`
+
+```json
+{
+  "ok": true,
+  "keys": {"GEMINI_API_KEY": true, "DATA_GO_KR_SERVICE_KEY": true, "KAKAO_REST_API_KEY": true, "ODSAY_API_KEY": true},
+  "store": {"sgg": 13, "dong": 302, "deal": 132076, "commute": 71}
+}
+```
+`keys` 는 설정 여부만 준다 (값은 절대 응답하지 않는다).
+
+## 2. GET `/api/meta`
+
+```json
+{
+  "factors": [
+    {"key": "monthly_cost", "label": "월 총비용", "better": "low", "unit": "만원", "description": "월세 + 보증금 × 환산이율 ÷ 12 + 월 교통비 (실거래 중앙값)"},
+    {"key": "commute", "label": "통근 시간", "better": "low", "unit": "분", "description": "..."},
+    {"key": "station_access", "label": "역 접근성", "better": "low", "unit": "분", "description": "..."},
+    {"key": "convenience", "label": "생활 편의", "better": "high", "unit": "점", "description": "..."},
+    {"key": "quiet", "label": "조용함", "better": "low", "unit": "개", "description": "..."}
+  ],
+  "levels": ["매우 중요", "중요", "보통", "조금", "상관없음"],
+  "regions": [{"code": "41135", "sido": "경기도", "name": "성남시 분당구", "status": "done", "dong_count": 18, "deal_count": 12971, "collected_at": "2026-11-21T14:02:11", "error": null}]
+}
+```
+
+## 3. POST `/api/sessions`
+
+본문 없음. 응답은 4번과 같은 `SessionView` (새 세션이라 `messages: []`, `result: null`, `state.destination: null`).
+
+## 4. GET `/api/sessions/{session_id}`
+
+```ts
+interface SessionView {
+  session_id: string;
+  state: StateSnapshot;
+  messages: {role: "user" | "assistant"; text: string; source?: "llm" | "template"}[];
+  result: ResultPayload | null;   // 마지막 순위 (diff 는 null)
+}
+
+interface StateSnapshot {
+  levels: Record<FactorKey, Level>;
+  constraints: Partial<Record<"max_deposit" | "max_monthly_rent" | "max_commute_min" | "max_monthly_cost", number>>;
+  params: {destination: string; house_types: string[]; max_area_m2: number; new_contracts_only: boolean;
+           conversion_rate: number; work_days: number; min_samples: number};
+  destination: Destination | null;
+}
+
+type FactorKey = "monthly_cost" | "commute" | "station_access" | "convenience" | "quiet";
+type Level = "매우 중요" | "중요" | "보통" | "조금" | "상관없음";
+
+interface Destination {
+  key: string;                 // 목적지역 이름 (통근 키)
+  label: string;               // "카카오판교아지트 (가까운 역: 판교역)"
+  query: string;               // 사용자가 말한 이름
+  place_name: string; place_lon: number; place_lat: number;
+  lon: number; lat: number;    // 도착 역 좌표
+  walk_from_station_min: number;
+  station_lines: string[];
+  alternatives: string[];      // 검색 후보 3개 (다른 곳이면 사용자가 고쳐 말함)
+}
+```
+
+## 5. POST `/api/sessions/{session_id}/messages`
+
+요청
+```json
+{"text": "판교역으로 출근해요. 보증금 1000에 월세 60 넘으면 안 되고, 싼 게 제일 중요해요."}
+```
+
+응답: `Content-Type: text/event-stream`. 이벤트마다
+```
+event: <type>
+data: <JSON 한 줄>
+
+```
+POST 라서 `EventSource` 를 쓸 수 없다. `fetch` 로 `response.body` 를 읽어 빈 줄(`\n\n`)로 나눈다 (예시 코드: [backend.md](backend.md) 3.1).
+
+### 이벤트 순서
+
+```
+log(extract) → interpretation → [log(destination)] →
+  [log(region) → log(collect)* → log(commute) → log(dataset)]   ← 목적지가 바뀌었을 때
+  → log(score) → [log(tradeoff)] → result → log(explain) → message → done
+```
+목적지가 없으면 `interpretation → message(되묻기) → done` 으로 끝난다. 처리 중 예외는 `error` 다음 `done`.
+
+### 이벤트 형식
+
+```ts
+type AgentEvent =
+  | {type: "log"; t: number; step: LogStep; status: "running" | "done" | "warn" | "error"; detail: string; ms?: number}
+  | {type: "interpretation"; t: number; intent: Intent; what_if: boolean;
+     applied: Applied[]; rejected: Rejected[]; unsupported: string[];
+     comparisons: {more: FactorKey; less: FactorKey; evidence: string}[]; comparison_fixes: string[];
+     destination: Destination | null; follow_up: string | null; state: StateSnapshot}
+  | {type: "result"; t: number; what_if: boolean; payload: ResultPayload}
+  | {type: "message"; t: number; text: string; source: "llm" | "template"}
+  | {type: "error"; t: number; detail: string}
+  | {type: "done"; t: number};
+
+type LogStep = "extract" | "destination" | "region" | "collect" | "commute" | "dataset" | "score" | "tradeoff" | "explain";
+type Intent = "update" | "what_if" | "question" | "confirm" | "other";
+
+interface Applied {
+  type: "constraint" | "param" | "preference";
+  key: string;                     // 조건 키, 파라미터 키, 또는 요인 키
+  label?: string;                  // preference 일 때 요인 이름
+  before: unknown; after: unknown; // 조건 해제면 after = null
+  evidence?: string;               // preference 일 때 근거 원문
+}
+interface Rejected {item: string; reason: string; supported?: string[]}
+```
+
+| step | 뜻 |
+|---|---|
+| `extract` | Gemini 조건 추출 (`ms` 포함) |
+| `destination` | 목적지 검색·역 붙이기 |
+| `region` | 후보 시군구 찾기 |
+| `collect` | 시군구 수집 (시군구마다 running 여러 번 → done/error) |
+| `commute` | 후보 동 → 목적지역 통근 계산 |
+| `dataset` | 후보 동·실거래 불러오기 |
+| `score` | 엔진 순위 계산 |
+| `tradeoff` | 상충 감지 (있을 때만, status=warn) |
+| `explain` | Gemini 설명 + 숫자 검사 (실패 시 warn, 템플릿 설명) |
+
+### `ResultPayload`
+
+```ts
+interface ResultPayload {
+  destination: Destination;
+  universe_size: number;                 // 후보 동 수 (목적지 반경 10km)
+  ranked: DongCard[];                    // 통과한 동, 순위순
+  excluded: DongCard[];                  // 제외된 동 (violations 포함), 덜 어긋난 순
+  near_misses: string[];                 // 통과가 3곳 미만일 때, 조금 풀면 들어오는 동 코드
+  scatter: {dong_code: string; name: string; rank: number; x: number | null; y: number | null;
+            pareto: boolean; estimated: boolean}[];   // x 월 총비용(만원), y 통근(분)
+  weights: Record<FactorKey, number>;    // 합 1
+  levels: Record<FactorKey, Level>;
+  constraints: StateSnapshot["constraints"];
+  bounds: Record<FactorKey, [number, number]>;   // 정규화 구간 (5~95 백분위)
+  notes: string[];
+  diff: Diff | null;                     // 같은 목적지에서 이전 결과가 있을 때
+  tradeoffs: Tradeoff[];
+  sources: Record<string, string>;       // 화면 하단 출처 표기
+  rent_period: string;                   // "202511~202610"
+  labels: Record<FactorKey, string>;
+}
+
+interface DongCard {
+  dong_code: string; name: string; sgg: string; sido: string; lon: number; lat: number;
+  rank: number | null; score: number;                       // 0~100
+  contrib: Record<FactorKey, number>;                       // 요인별 기여 점수, 합 = score
+  raw: Record<FactorKey, number | null>;                    // 원값 (월 총비용은 예산 안 거래 기준일 수 있음)
+  norm: Record<FactorKey, number>;                          // 0~1
+  flags: string[];                                          // "예산 안 거래 26/69건", "월 총비용 데이터 부족" …
+  estimated: FactorKey[];                                   // 데이터가 없어 중앙값으로 채운 요인
+  cost: {monthly_total: number | null; median_deposit: number | null; median_rent: number | null;
+         fare_month: number | null; samples: number};
+  commute: {min?: number; fare?: number; transfers?: number; mode?: string; lines?: string[];
+            map_url?: string; error?: string};
+  station: {name: string | null; lines?: string[]; dist_m?: number; walk_min?: number; note?: string};
+  convenience: Record<string, number>;
+  bars: {count?: number; source?: string};
+  violations: Violation[] | null;                           // excluded 에만
+}
+
+interface Violation {
+  constraint: "budget" | "commute" | "monthly_cost";
+  severity: number;                      // 한도의 몇 배인지 (1 초과)
+  relax_to: Partial<StateSnapshot["constraints"]>;   // 이만큼 풀면 들어옴
+  in_budget?: number; samples?: number; value?: number; limit?: number;
+}
+
+interface Diff {
+  moves: {dong_code: string; name: string; prev_rank: number | null; cur_rank: number | null; change: number | null}[];
+  overtakes: {a: {dong_code: string; name: string}; b: {dong_code: string; name: string};
+              gap_before: number; gap_after: number; by_factor: Record<string, number>}[];  // 요인 이름 → 격차 변화
+  weight_change: Record<string, number>;
+  entered: string[]; dropped: string[];
+}
+
+interface Tradeoff {factors: [string, string]; correlation: number; message: string; [k: string]: unknown}
+```
+
+## 6. POST `/api/sessions/{session_id}/what-if`
+
+대화 없이 조건만 바꿔 본다 (예: 화면의 "통근 한도 60분이면?" 버튼). 세션 상태는 바뀌지 않는다.
+
+요청 (변경분 형식은 [engine.md](engine.md) 9절)
+```json
+{"changes": {"set_constraints": {"max_commute_min": 60}}}
+```
+
+응답
+```ts
+{report: {applied: Applied[]; rejected: Rejected[]}; payload: ResultPayload}   // payload.diff = 현재 결과 대비
+```
+순위가 아직 없으면 400.
+
+## 예시: curl
+
+```powershell
+$s = Invoke-RestMethod -Method Post http://localhost:8000/api/sessions
+curl.exe -N -X POST "http://localhost:8000/api/sessions/$($s.session_id)/messages" -H "Content-Type: application/json" -d '{\"text\": \"판교역으로 출근해요\"}'
+```
