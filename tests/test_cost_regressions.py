@@ -76,6 +76,50 @@ class CostRegressionTest(unittest.TestCase):
         self.assertEqual(entry["raw"]["monthly_cost"], 20)
         self.assertNotIn("교통비 확인 불가", entry["flags"])
 
+    def test_relaxation_changes_only_required_budget_limits(self):
+        cases = [
+            (1000, 20, {"max_deposit": 0, "max_monthly_rent": 30}, {"max_deposit": 1000}),
+            (500, 40, {"max_deposit": 1000, "max_monthly_rent": 30}, {"max_monthly_rent": 40}),
+            (1000, 40, {"max_deposit": 0, "max_monthly_rent": 30},
+             {"max_deposit": 1000, "max_monthly_rent": 40}),
+        ]
+        for deposit, rent, original, expected in cases:
+            with self.subTest(deposit=deposit, rent=rent):
+                ds = self.dataset(deals("a", [rent] * 5, deposit=deposit))
+                result = self.evaluate(ds, Constraints(**original))
+                relax = result.excluded[0]["violations"][0]["relax_to"]
+                self.assertEqual(relax, expected)
+                self.assertEqual(len(self.evaluate(ds, Constraints(**{**original, **relax})).ranked), 1)
+
+    def test_joint_relaxation_uses_real_transaction_pairs(self):
+        rows = (deals("a", [20] * 2, deposit=1000)
+                + deals("a", [100] * 3, deposit=0))
+        ds = self.dataset(rows)
+        original = {"max_deposit": 0, "max_monthly_rent": 30}
+        result = self.evaluate(ds, Constraints(**original))
+        relax = result.excluded[0]["violations"][0]["relax_to"]
+        self.assertEqual(len(self.evaluate(ds, Constraints(**{**original, **relax})).ranked), 1)
+        json.dumps(result.to_dict(), allow_nan=False)
+
+    def test_template_formats_missing_cost_and_commute_without_none(self):
+        ds = self.dataset(deals("a", [20] * 5, deposit=0), fare=None)
+        ds.dongs[0]["commute"][DEST] = {"error": "NO_RESULTS"}
+        result = self.evaluate(ds, Constraints(max_monthly_cost=25))
+        facts = presenter.facts(result, destination={"label": DEST}, report=None, diff=None,
+                                trade=[], unsupported=[], follow_up=None, question=None)
+        text = presenter.template_explanation(facts)
+        self.assertNotIn("None", text)
+        self.assertIn("월 총비용 확인 불가", text)
+        self.assertIn("통근 확인 불가", text)
+
+    def test_template_preserves_numeric_zero(self):
+        facts = {"상위": [{"순위": 1, "동": "가동", "월총비용_만원": 0,
+                          "통근_분": 0, "강점": []}],
+                 "목적지": DEST, "후보_동_수": 1, "통과_동_수": 1}
+        text = presenter.template_explanation(facts)
+        self.assertIn("월 총비용 0만 원", text)
+        self.assertIn("통근 0분", text)
+
 
 if __name__ == "__main__":
     unittest.main()

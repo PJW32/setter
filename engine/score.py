@@ -101,7 +101,7 @@ def _budget_check(f: DongFeature, c: Constraints, min_samples: int) -> dict:
                      else (0.0 if d.deposit == 0 else 1.0 + d.deposit))
         return max(r)
 
-    scales = sorted(need(d) for d in deals)
+    closest = sorted(deals, key=lambda d: (need(d), d.deposit, d.monthly_rent))[:MIN_IN_BUDGET]
     in_budget = [d for d in deals if need(d) <= 1.0]
     out = {"samples": len(deals), "in_budget": len(in_budget), "share": round(len(in_budget) / len(deals), 2)}
     if len(in_budget) >= MIN_IN_BUDGET:
@@ -115,17 +115,17 @@ def _budget_check(f: DongFeature, c: Constraints, min_samples: int) -> dict:
             "median_rent": statistics.median(d.monthly_rent for d in in_budget),
         }
         return out
-    k = scales[MIN_IN_BUDGET - 1]
+    k = need(closest[-1])
     out["status"] = "exclude"
     out["severity"] = k
     relax = {}
-    if math.isfinite(k):
-        if c.max_monthly_rent is not None:
-            relax["max_monthly_rent"] = math.ceil(c.max_monthly_rent * k)
-        if c.max_deposit is not None:
-            required = (c.max_deposit * k if c.max_deposit > 0 else
-                        max(d.deposit for d in sorted(deals, key=need)[:MIN_IN_BUDGET]))
-            relax["max_deposit"] = math.ceil(required / 100) * 100
+    # 같은 실제 거래 3건이 들어오도록 필요한 한도만 올린다.
+    # 위반도는 정렬용이며, 다른 조건의 한도에 곱할 배수가 아니다 (특히 0원 한도).
+    for key, field_name in (("max_monthly_rent", "monthly_rent"), ("max_deposit", "deposit")):
+        limit = getattr(c, key)
+        required = max(getattr(d, field_name) for d in closest)
+        if limit is not None and required > limit:
+            relax[key] = math.ceil(required)
     out["relax_to"] = relax
     return out
 

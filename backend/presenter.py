@@ -160,8 +160,10 @@ def template_explanation(f: dict) -> str:
         tops = []
         for d in f["상위"]:
             s = ", ".join(x["요인"] for x in d["강점"])
-            tops.append(f"{d['순위']}위 {d['동']}(월 총비용 {d['월총비용_만원']}만 원, 통근 {d['통근_분']}분, 강점: {s})")
-        parts.append(f"{f['목적지']} 기준 후보 {f['후보_동_수']}곳 중 조건을 만족한 {f['통과_동_수']}곳의 상위는 " + "; ".join(tops) + "입니다.")
+            cost = "확인 불가" if d["월총비용_만원"] is None else f"{d['월총비용_만원']}만 원"
+            commute = "확인 불가" if d["통근_분"] is None else f"{d['통근_분']}분"
+            tops.append(f"{d['순위']}위 {d['동']}(월 총비용 {cost}, 통근 {commute}, 강점: {s})")
+        parts.append(f"{f['목적지']} 기준 후보 {f['후보_동_수']}곳 중 현재 비교 후보 {f['통과_동_수']}곳의 상위는 " + "; ".join(tops) + "입니다.")
     else:
         parts.append("조건을 모두 만족하는 동이 없어요.")
     if f.get("조건을_조금_풀면"):
