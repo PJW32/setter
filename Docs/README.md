@@ -12,6 +12,7 @@
 | [data.md](data.md) | 데이터: 출처, 수집 방식(실시간 지역 수집), 저장 형태, 한도, 한계 |
 | [data-prewarm.md](data-prewarm.md) | 사전 수집 명령, 로컬 저장 상태, 결과 보고서, 부분 실패와 배포 시 데이터 유지 |
 | [backend.md](backend.md) | 백엔드: 구조, 에이전트 한 턴의 흐름, API·이벤트 형식(프론트엔드용), LLM 사용과 검증 |
+| [render-deploy.md](render-deploy.md) | Render 무료 심사용 배포, 접속 인증, 대화 접근 제한, 비밀값 설정과 검증 |
 | [mvp-test-scenarios.md](mvp-test-scenarios.md) | MVP 테스트 시나리오: 시연 대본, 발화 테스트 세트, 예외 상황, 통과 기준 |
 | [data-sources.md](data-sources.md) | (조사 기록) API 명세 확인 과정과 실제 응답 확인 결과 |
 
