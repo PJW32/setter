@@ -36,7 +36,7 @@ export type AgentEvent =
      guides?: Guide[];
      destination: Destination | null; follow_up: string | null; state: StateSnapshot}
   | {type: "result"; t: number; what_if: boolean; payload: ResultPayload}
-  | {type: "message"; t: number; text: string; source: "llm" | "template"; attachments?: Attachment[]}
+  | {type: "message"; t: number; text: string; source: "llm" | "template"; attachments?: Attachment[]; focus?: Focus | null}
   | {type: "error"; t: number; detail: string}
   | {type: "done"; t: number};
 
@@ -54,9 +54,14 @@ export interface AttachmentRow {
 }
 export interface CompareItem {label: string; unit: string; a: number | null; b: number | null; diff: number | null;
   abs_diff: number | null; better: string | null}
+export interface FactorPoint {key: FactorKey; label: string; a: number; b: number}   // 요인별 점수, 합 = 동네 점수
+export interface CompareData {a: string; b: string; items: CompareItem[]; factors?: FactorPoint[]}
 export type Attachment =
-  | {kind: "dongs"; title: string; rows: AttachmentRow[]; compare?: {a: string; b: string; items: CompareItem[]}}
+  | {kind: "dongs"; title: string; rows: AttachmentRow[]; compare?: CompareData}
   | {kind: "guides"; title: string; items: Guide[]};
+
+/** 답변에 맞춰 오른쪽 화면을 옮기는 지시 */
+export interface Focus {tab: "map" | "compare" | "tradeoff"; dong_codes: string[]}
 
 export interface Applied {
   type: "constraint" | "param" | "preference";

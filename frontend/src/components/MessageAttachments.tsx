@@ -1,5 +1,5 @@
 import { fmt, won } from '../lib/format'
-import type { Attachment, AttachmentRow, CompareItem } from '../lib/types'
+import type { Attachment, AttachmentRow, CompareData, FactorPoint } from '../lib/types'
 
 /** 답변 아래에 붙는 자료: 동네 요약 표(두 곳이면 차이 포함), 직접 확인하는 방법 */
 export default function MessageAttachments({ items, onFocusDong }: {
@@ -31,12 +31,13 @@ export default function MessageAttachments({ items, onFocusDong }: {
 }
 
 function DongTable({ title, rows, compare, onFocusDong }: {
-  title: string; rows: AttachmentRow[]; compare?: { a: string; b: string; items: CompareItem[] }
+  title: string; rows: AttachmentRow[]; compare?: CompareData
   onFocusDong: (code: string) => void
 }) {
   return (
     <section className="att" aria-label={title}>
       <h3>{title}</h3>
+      {compare?.factors && <FactorBars a={compare.a} b={compare.b} factors={compare.factors} />}
       {compare ? <CompareTable compare={compare} /> : (
         <table className="att-table">
           <thead>
@@ -69,7 +70,36 @@ function DongTable({ title, rows, compare, onFocusDong }: {
   )
 }
 
-function CompareTable({ compare }: { compare: { a: string; b: string; items: CompareItem[] } }) {
+/** 두 동네의 요인별 점수를 나란히 막대로. 점수 = 요인별 점수의 합 */
+function FactorBars({ a, b, factors }: { a: string; b: string; factors: FactorPoint[] }) {
+  const max = Math.max(1, ...factors.flatMap((f) => [f.a, f.b]))
+  return (
+    <figure className="fbars" aria-label={`${a}와 ${b}의 요인별 점수`}>
+      <figcaption className="fbars-legend">
+        <span><i className="fbars-key fbars-a" />{a}</span>
+        <span><i className="fbars-key fbars-b" />{b}</span>
+        <span className="fbars-note">요인별 점수 (합 = 총점)</span>
+      </figcaption>
+      {factors.map((f) => (
+        <div key={f.key} className="fbars-row">
+          <span className="fbars-label">{f.label}</span>
+          <span className="fbars-pair">
+            <span className="fbars-line">
+              <span className="fbars-bar fbars-a" style={{ width: `${(f.a / max) * 100}%` }} />
+              <span className="fbars-val">{fmt(f.a)}</span>
+            </span>
+            <span className="fbars-line">
+              <span className="fbars-bar fbars-b" style={{ width: `${(f.b / max) * 100}%` }} />
+              <span className="fbars-val">{fmt(f.b)}</span>
+            </span>
+          </span>
+        </div>
+      ))}
+    </figure>
+  )
+}
+
+function CompareTable({ compare }: { compare: CompareData }) {
   const shown = compare.items.filter((i) => i.a != null || i.b != null)
   return (
     <table className="att-table">
