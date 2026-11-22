@@ -140,6 +140,12 @@ export default function App() {
         </nav>}
 
         <section className="stage">
+          {shown && !shown.ranked.length && (
+            <div className="mascot-status">
+              <img src="/setter-mascot-thinking.png" width="48" height="54" alt="" />
+              <p>추천 후보가 없어요. 예산이나 통근 조건을 조정해 보세요.</p>
+            </div>
+          )}
           {!shown ? (
             <div className="empty">
               <img className="empty-mascot" src="/setter-mascot.png" width="384" height="434" alt="" />
@@ -154,7 +160,10 @@ export default function App() {
               {activeCandidate && (
                 <section className="candidate-summary" aria-label="지도 후보 요약">
                   <header>
-                    <h2>{activeCandidate.name} <small>{activeCandidate.sgg}</small></h2>
+                    <div className="candidate-heading">
+                      <img src="/setter-mascot-guide.png" width="40" height="45" alt="" />
+                      <h2>{activeCandidate.name} <small>{activeCandidate.sgg}</small></h2>
+                    </div>
                     <button type="button" className="link-btn" onClick={() => {
                       setSelected(activeCandidate.dong_code)
                       setTab('compare')

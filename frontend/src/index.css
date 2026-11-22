@@ -54,6 +54,10 @@ a { color: var(--ink); text-underline-offset: 3px; }
 .candidate-summary h2 { margin: 0; font-size: 18px; text-wrap: balance; }
 .candidate-summary small { font-size: 13px; color: var(--muted); font-weight: 400; }
 .candidate-summary header button { flex-shrink: 0; }
+.candidate-heading, .mascot-status { display: flex; align-items: center; gap: 10px; }
+.mascot-status p { margin: 0; }
+.stage > .mascot-status { padding: 10px 16px; border-bottom: 1px solid var(--rule); }
+.candidate-heading img, .mascot-status img { flex: none; object-fit: contain; }
 .candidate-summary dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px; margin: 12px 0 0; }
 .candidate-summary dl div { padding: 8px 10px; border-radius: var(--r-sm); background: var(--bg); }
 .candidate-summary dt { color: var(--muted); font-size: 12px; }

@@ -52,7 +52,10 @@ export default function Chat({ items, busy, disabled, onSend }: {
                 </div>
               ),
         )}
-        {busy && <p className="typing">조건을 확인하고 동네를 비교하는 중…</p>}
+        {busy && <div className="mascot-status typing" role="status">
+          <img src="/setter-mascot-exploring.png" width="40" height="45" alt="" />
+          <p>조건을 확인하고 동네를 비교하는 중…</p>
+        </div>}
         <div ref={endRef} />
       </div>
 
