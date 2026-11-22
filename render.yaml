@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: saeteo-preview
+    runtime: python
+    plan: free
+    branch: master
+    region: singapore
+    buildCommand: python scripts/build_render.py
+    startCommand: python -m uvicorn backend.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-access-log --no-proxy-headers
+    healthCheckPath: /healthz
+    autoDeployTrigger: "off"
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: PYTHON_VERSION
+        value: 3.12.10
+      - key: NODE_VERSION
+        value: "24"
+      - key: DEPLOY_USERNAME
+        sync: false
+      - key: DEPLOY_PASSWORD
+        sync: false
+      - key: DEPLOY_SESSION_SECRET
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: KAKAO_REST_API_KEY
+        sync: false
+      - key: DATA_GO_KR_SERVICE_KEY
+        sync: false
+      - key: DEPLOY_RENT_CODES
+        value: "11650 11680 11710 41111 41131 41133 41135 41290 41430 41461 41463 41465 41610"

@@ -151,6 +151,8 @@ activemq-data/
 
 # Environments
 .env
+.env.*
+!.env.example
 .envrc
 .venv
 env/
@@ -229,6 +231,7 @@ data/store.sqlite*
 
 # 프로젝트: 재생성 가능한 대용량 수집본 (scripts/build_rent.py 로 다시 만듦)
 data/rent_deals.csv
+data/rent_snapshot.sqlite*
 
 # 프론트 공통 소스는 Python의 lib/ 제외 규칙과 구분한다.
 !frontend/src/lib/
