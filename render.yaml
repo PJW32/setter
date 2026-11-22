@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: setter
+    name: setter-teojeon-lab
     runtime: python
     plan: free
     branch: master
