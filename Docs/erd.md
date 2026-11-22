@@ -11,6 +11,8 @@
 
 ## 1. 영속 저장소 (SQLite)
 
+아래 연결선은 **논리적 관계**다. 현재 `backend/store.py`의 SQLite DDL에는 `REFERENCES`나 `FOREIGN KEY` 제약이 없으며, 외래키 검증과 `ON DELETE CASCADE`도 적용되지 않는다. 참조 컬럼을 실제 외래키 제약으로 오해하지 않도록 구분한다. 이 문서 보완에서는 기존 DB를 마이그레이션하지 않는다.
+
 ```mermaid
 erDiagram
     SGG ||--o{ DONG : "포함한다"
@@ -30,12 +32,12 @@ erDiagram
     }
     DONG {
         TEXT code PK "법정동 코드 10자리, 예 4113510300"
-        TEXT sgg_code FK "SGG.code"
+        TEXT sgg_code "논리 참조 SGG.code"
         TEXT data "동 레코드 JSON (아래 1.2)"
     }
     DEAL {
-        TEXT dong_code FK "DONG.code (매칭 실패 시 저장 안 함)"
-        TEXT sgg_code FK "SGG.code"
+        TEXT dong_code "논리 참조 DONG.code (매칭 실패 시 저장 안 함)"
+        TEXT sgg_code "논리 참조 SGG.code"
         TEXT house_type "오피스텔 | 단독다가구 | 연립다세대"
         REAL area_m2 "면적 ㎡"
         TEXT area_kind "전용 | 계약 (단독다가구)"
@@ -45,7 +47,7 @@ erDiagram
         TEXT contract_kind "신규 | 갱신 | 빈값"
     }
     COMMUTE {
-        TEXT dong_code PK, FK "DONG.code"
+        TEXT dong_code PK "논리 참조 DONG.code"
         TEXT dest_key PK "목적지역 이름, 예 판교역"
         TEXT data "통근 JSON (아래 1.3)"
     }
@@ -60,6 +62,7 @@ erDiagram
 
 - `DESTINATION`(목적지역)은 테이블이 아니다. 통근의 `dest_key`(역 이름)로만 쓴다. 회사·동네 이름은 가장 가까운 역으로 바뀌어 같은 키를 공유한다
 - 시군구 수집은 시군구 단위로 잠금을 걸어 같은 시군구를 두 번 수집하지 않는다
+- `save_sgg`는 시군구의 동·거래를 삭제하고 다시 넣는 작업을 한 트랜잭션으로 처리한다. 일반 삭제 API는 없다. 통근 캐시는 별도 테이블에 남는다. 대표 지점을 바꾸는 재수집 기능을 추가한다면 관련 통근 캐시 무효화도 함께 구현해야 한다.
 
 ### 1.1 실거래 기간과 필터
 
@@ -93,6 +96,8 @@ erDiagram
 | `error` | string | NO_RESULTS | 경로가 없을 때만 |
 
 ## 2. 세션 메모리 (대화 상태)
+
+세션별 진행 중 요청 토큰은 `backend/main.py`의 `_inflight`에 보관한다. 메시지와 가정 비교가 동시에 같은 상태를 수정하지 못하게 하며, 중복 요청은 HTTP 409로 거절한다. 요청 토큰은 DB에 저장하지 않는다. 서버 재시작 시 세션·진행 상태가 사라지는 단일 프로세스 MVP 구조를 유지한다. 세션·메시지 영속화, 사용자 계정, 분산 잠금은 아직 구현하지 않았다.
 
 ```mermaid
 erDiagram

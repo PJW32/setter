@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from starlette.background import BackgroundTask
 
 from config import ROOT, key_status
 from engine.factors import FACTORS, LEVELS
@@ -19,6 +19,7 @@ from engine.factors import FACTORS, LEVELS
 from . import presenter, store
 from .agent import Agent, Session
 from .regions import DataService
+from .schemas import MessageIn, WhatIfIn
 
 app = FastAPI(title="첫동네 API", version="0.1")
 app.add_middleware(
@@ -30,14 +31,23 @@ app.add_middleware(
 agent = Agent(DataService())
 SESSIONS: dict[str, Session] = {}
 _sessions_lock = threading.Lock()
+_inflight: dict[str, object] = {}
 
 
-class MessageIn(BaseModel):
-    text: str
+def _reserve(sid: str) -> object:
+    with _sessions_lock:
+        if sid in _inflight:
+            raise HTTPException(409, "이 대화의 이전 요청을 처리 중입니다. 완료 후 다시 시도해 주세요.")
+        token = object()
+        _inflight[sid] = token
+        return token
 
 
-class WhatIfIn(BaseModel):
-    changes: dict
+def _release(sid: str, token: object) -> None:
+    with _sessions_lock:
+        # 스트림 종료와 백그라운드 정리가 겹쳐도 다음 요청의 예약을 지우지 않는다.
+        if _inflight.get(sid) is token:
+            del _inflight[sid]
 
 
 def _session(sid: str) -> Session:
@@ -94,21 +104,33 @@ def post_message(sid: str, body: MessageIn):
     text = body.text.strip()
     if not text:
         raise HTTPException(400, "빈 메시지")
+    token = _reserve(sid)
 
     def stream():
-        for ev in agent.handle(s, text):
-            yield f"event: {ev['type']}\ndata: {json.dumps(ev, ensure_ascii=False, default=str)}\n\n"
+        try:
+            for ev in agent.handle(s, text):
+                yield f"event: {ev['type']}\ndata: {json.dumps(ev, ensure_ascii=False, default=str)}\n\n"
+        finally:
+            _release(sid, token)
 
     return StreamingResponse(stream(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+                             background=BackgroundTask(_release, sid, token))
 
 
 @app.post("/api/sessions/{sid}/what-if")
 def what_if(sid: str, body: WhatIfIn):
+    s = _session(sid)
+    token = _reserve(sid)
     try:
-        return agent.what_if(_session(sid), body.changes)
+        changes = body.changes.model_dump(exclude_unset=True, exclude_none=True)
+        if "set_constraints" in changes:
+            changes["set_constraints"] = {k: v for k, v in changes["set_constraints"].items() if v is not None}
+        return agent.what_if(s, changes)
     except ValueError as e:
         raise HTTPException(400, str(e)) from None
+    finally:
+        _release(sid, token)
 
 
 # 빌드된 프론트엔드가 있으면 같은 서버에서 제공
