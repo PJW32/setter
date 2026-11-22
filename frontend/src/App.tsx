@@ -142,7 +142,7 @@ export default function App() {
         <section className="stage">
           {!shown ? (
             <div className="empty">
-              <img className="empty-mascot" src="/setter-mascot.png" width="515" height="584" alt="" />
+              <img className="empty-mascot" src="/setter-mascot.png" width="384" height="434" alt="" />
               <h1 className="empty-title">출근지와 예산에 맞는 동네 찾기</h1>
               <ul className="empty-factors" aria-label="비교 기준">
                 {FACTORS.map((factor) => <li key={factor.key}>{factor.label}</li>)}
