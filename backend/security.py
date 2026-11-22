@@ -146,7 +146,8 @@ class DeploymentGuard:
             if message["type"] == "http.response.start":
                 additions = {
                     b"cache-control": b"no-store", b"x-content-type-options": b"nosniff",
-                    b"x-frame-options": b"DENY", b"referrer-policy": b"no-referrer",
+                    # OSM 타일은 웹 요청의 Referer가 필요하다. 외부에는 origin만 보낸다.
+                    b"x-frame-options": b"DENY", b"referrer-policy": b"strict-origin-when-cross-origin",
                     b"content-security-policy": b"frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
                 }
                 if cfg.production:
