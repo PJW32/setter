@@ -272,3 +272,10 @@ type Attachment =
   | {kind: "dongs"; title: string; rows: AttachmentRow[]; compare?: {a: string; b: string; items: CompareItem[]}}
   | {kind: "guides"; title: string; items: Guide[]};
 ```
+
+### 7.1 2026-11-22 추가
+
+- `message.focus?: {tab: "map" | "compare" | "tradeoff"; dong_codes: string[]} | null` — 답변에 맞춰 오른쪽 화면을 옮기는 지시
+- `compare.factors?: {key: FactorKey; label: string; a: number; b: number}[]` — 두 동네의 요인별 점수 (대화창 막대 차트)
+- `Guide.default?: true` — 정해 둔 안내가 없는 주제의 기본 안내 (카카오맵 검색 링크)
+- 숫자 단위: `commute`, `station_walk`, `bars`, 비교 항목의 분·곳 값은 정수
