@@ -1,8 +1,13 @@
 """대화 한 턴의 흐름. 이벤트를 하나씩 내보낸다 (화면의 작업 로그·해석 카드·결과·설명).
 
-발화 → [LLM] 변경분 추출 → [코드] 비교 순서 검증 → 목적지 해석 → 상태 갱신(검증)
-     → 후보 지역 확보(없으면 수집) → [엔진] 순위 → 순위 변동 분해 → 상충 감지
-     → [LLM] 설명 (숫자 검사, 실패 시 템플릿)
+발화 → [LLM] 변경분·의도·가리킨 동네 추출 → 의도에 따라 갈라 처리
+  ├ 인사·확인 (조건 변경 없음)  → 짧은 대답 (LLM·순위 계산 없음)
+  ├ 질문 (조건 변경 없음, 결과 있음) → 지금 결과로 답변: 질문한 동네 상세 + 코드가 계산한 차이
+  │                                 → [LLM] 1~4문장 답 (숫자 검사, 실패 시 템플릿)
+  └ 조건 변경·가정 → [코드] 비교 순서 검증 → 목적지 해석 → 상태 갱신(검증)
+                   → 후보 지역 확보(없으면 수집) → [엔진] 순위 → 순위 변동 분해 → 상충 감지
+                   → [LLM] 짧게 정리한 설명 (숫자 검사, 실패 시 템플릿)
+데이터로 구할 수 없는 정보는 확인 방법(guides)을 함께 안내하고, 답변에는 화면용 자료(attachments)를 붙인다.
 
 이벤트 종류: log / interpretation / result / message / error / done
 """
@@ -18,6 +23,7 @@ from engine import State, apply_changes, compare, evaluate
 from engine.features import Params
 from engine.score import Result
 
+from . import guides
 from . import llm as llm_module
 from . import presenter
 from .regions import DataService, Destination
@@ -32,8 +38,13 @@ class Session:
     dataset: object = None
     ds_key: str | None = None
     last_question: str | None = None
+    last_targets: list[str] = field(default_factory=list)  # 직전 답변에서 다룬 동 코드 ('그 동네' 이어받기)
     messages: list[dict] = field(default_factory=list)
     created: float = field(default_factory=time.time)
+
+
+# 직전에 말한 동네를 다시 가리키는 말
+REFER_BACK = ("그 동네", "그동네", "거기", "그곳", "그 곳", "두 곳", "두 동네", "둘 다", "둘이", "아까 그", "방금 그")
 
 
 def _ev(type_: str, **kw) -> dict:
@@ -65,7 +76,12 @@ class Agent:
 
         # 1. 조건 해석
         yield _log("extract", "running", "발화에서 조건 추출 (Gemini)")
+        has_result = s.result is not None and s.dataset is not None
         snapshot = {**s.state.snapshot(), "destination": s.dest.label if s.dest else None}
+        if has_result:  # 동네 이름·'2위' 같은 말을 알아듣도록 지금 결과와 최근 대화를 함께 넘긴다
+            snapshot["후보_동네"] = [e["name"] for e in s.result.ranked + s.result.excluded]
+            snapshot["현재_상위"] = [f"{e['rank']}위 {e['name']}" for e in s.result.top(5)]
+        snapshot["최근_대화"] = [{"역할": m["role"], "내용": m["text"][:200]} for m in s.messages[:-1][-4:]]
         changes, info = self.llm.extract(snapshot, text, s.last_question)
         if info.get("error") and not any(changes.get(k) for k in ("destination", "preference_changes", "set_constraints")):
             yield _log("extract", "error", "조건 해석 실패", info=info)
@@ -77,6 +93,24 @@ class Agent:
         n_pref, n_con = len(changes["preference_changes"]), len([v for v in changes["set_constraints"].values() if v is not None])
         yield _log("extract", "done", f"선호 {n_pref}개, 필수 조건 {n_con}개, 확인 불가 {len(changes['unsupported'])}개",
                    ms=info.get("ms"), fixes=fixes)
+
+        # 의도에 따라 갈라 처리: 조건이 바뀌지 않으면 순위를 다시 계산하지 않는다
+        intent = changes.get("intent")
+        has_changes = bool(changes.get("destination") or changes.get("house_types") or changes["preference_changes"]
+                           or changes["clear_constraints"]
+                           or any(v is not None for v in changes["set_constraints"].values()))
+        guide_texts = list(changes.get("unsupported") or []) + [text]
+        outside = list(changes.get("outside_topics") or [])
+        guides_ = guides.match(guide_texts, outside=outside)
+        if not has_changes:
+            if intent in ("smalltalk", "confirm") or (intent == "other" and not guides_ and not has_result):
+                yield _log("reply", "done", "인사·확인이라 조건과 순위는 그대로 두고 짧게 답함")
+                yield from self._say(s, presenter.short_reply(intent, text, has_result), "template")
+                yield _ev("done")
+                return
+            if has_result:
+                yield from self._answer(s, text, changes, guide_texts, outside)
+                return
 
         # 2. 목적지
         dest, follow_up = s.dest, changes.get("follow_up_question")
@@ -106,7 +140,7 @@ class Agent:
         new_state, report = apply_changes(s.state, eng, destinations=[dest.key] if dest else [], utterance=text)
         yield _ev("interpretation", intent=changes.get("intent"), what_if=what_if,
                   applied=report["applied"], rejected=report["rejected"], unsupported=changes["unsupported"],
-                  comparisons=changes.get("comparisons", []), comparison_fixes=fixes,
+                  comparisons=changes.get("comparisons", []), comparison_fixes=fixes, guides=guides_,
                   destination=dest.to_dict() if dest else None, follow_up=follow_up,
                   state={**new_state.snapshot(), "destination": dest.to_dict() if dest else None})
 
@@ -152,9 +186,13 @@ class Agent:
 
         # 6. 설명
         yield _log("explain", "running", "결과 설명 작성 (Gemini, 엔진 숫자만 사용)")
+        targets, _ = presenter.find_targets(res, text, changes.get("mentioned_dongs"), changes.get("mentioned_ranks"))
+        place = targets[0]["name"] if targets else (dest.place_name if dest else None)
+        guides_ = guides.match(guide_texts, outside=outside, place=place)
         f = presenter.facts(res, destination=dest.to_dict(), report=report, diff=diff, trade=trade,
                             unsupported=changes["unsupported"], follow_up=follow_up,
-                            question=text if changes.get("intent") == "question" else None)
+                            question=text if changes.get("intent") == "question" else None,
+                            targets=targets, guides_=guides_, first=s.result is None)
         if what_if:
             f["what_if"] = True
         text_out, einfo = self.llm.explain(f)
@@ -169,7 +207,38 @@ class Agent:
         # 7. 확정 (가정 질문이면 상태를 바꾸지 않는다)
         if not what_if:
             s.state, s.dest, s.result, s.dataset, s.ds_key = new_state, dest, res, ds, dest.key
-        yield from self._say(s, text_out, source, follow_up=bool(follow_up))
+        title = "말씀하신 동네" if targets else ("가정해 본 상위 3곳" if what_if else "상위 3곳")
+        atts = presenter.attachments(rows=targets or res.top(3), title=title, guides_=guides_)
+        yield from self._say(s, text_out, source, follow_up=bool(follow_up), attachments=atts,
+                             focus=presenter.focus_for(text, targets))
+        yield _ev("done")
+
+    # ------------------------------------------------------------------ 질문 답변 (조건 그대로, 재계산 없음)
+    def _answer(self, s: Session, text: str, changes: dict, guide_texts: list[str], outside: list[str]):
+        res = s.result
+        targets, missing = presenter.find_targets(res, text, changes.get("mentioned_dongs"),
+                                                  changes.get("mentioned_ranks"))
+        if not targets and s.last_targets and any(k in text for k in REFER_BACK):
+            by_code = {e["dong_code"]: e for e in res.ranked + res.excluded}
+            targets = [by_code[c] for c in s.last_targets if c in by_code]
+        s.last_targets = [e["dong_code"] for e in targets]
+        place = targets[0]["name"] if targets else (s.dest.place_name if s.dest else None)
+        guides_ = guides.match(guide_texts, outside=outside, place=place)
+        who = f" · 대상: {', '.join(e['name'] for e in targets)}" if targets else ""
+        yield _log("answer", "running", f"지금 결과에서 답 찾기 (조건 그대로, 순위 재계산 없음){who}")
+        f = presenter.answer_facts(
+            res, question=text, destination=s.dest.to_dict() if s.dest else None, params=s.state.params.to_dict(),
+            targets=targets, missing=missing, guides_=guides_, history=s.messages[:-1], meta=s.dataset.meta)
+        out, info = self.llm.answer(f)
+        if out:
+            yield _log("answer", "done", "답변 완료 (숫자 검사 통과)", ms=info.get("ms"), info=info)
+            source = "llm"
+        else:
+            out = presenter.template_answer(f)
+            yield _log("answer", "warn", "LLM 답변이 숫자 검사를 통과하지 못해 템플릿 답변으로 대체", info=info)
+            source = "template"
+        atts = presenter.attachments(rows=targets, title="질문한 동네", guides_=guides_)
+        yield from self._say(s, out, source, attachments=atts, focus=presenter.focus_for(text, targets))
         yield _ev("done")
 
     # ------------------------------------------------------------------ 가정 비교 (상태 안 바뀜)
@@ -182,10 +251,14 @@ class Agent:
         return {"report": report, "payload": presenter.result_payload(res, s.dataset.meta, diff, presenter.tradeoffs(res))}
 
     # ------------------------------------------------------------------ 도우미
-    def _say(self, s: Session, text: str, source: str, follow_up: bool = False):
-        s.messages.append({"role": "assistant", "text": text, "source": source})
+    def _say(self, s: Session, text: str, source: str, follow_up: bool = False,
+             attachments: list[dict] | None = None, focus: dict | None = None):
+        msg = {"role": "assistant", "text": text, "source": source}
+        if attachments:
+            msg["attachments"] = attachments
+        s.messages.append(msg)
         s.last_question = text if follow_up else None
-        yield _ev("message", text=text, source=source)
+        yield _ev("message", text=text, source=source, attachments=attachments or [], focus=focus)
 
     @staticmethod
     def _run_with_logs(fn):

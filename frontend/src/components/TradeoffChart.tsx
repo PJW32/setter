@@ -3,18 +3,21 @@ import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAx
 import { fmt, MAP_SCORE_COLORS, scoreColor, won } from '../lib/format'
 import type { ResultPayload } from '../lib/types'
 
-type Props = { result: ResultPayload; selected: string | null; onSelect: (c: string) => void }
+type Props = { result: ResultPayload; selected: string | null; onSelect: (c: string) => void; highlight?: string[] }
 type Pt = { dong_code: string; name: string; rank: number; x: number; y: number; pareto: boolean; estimated: boolean }
 
 const INK = '#15222B'
 const LINE = MAP_SCORE_COLORS[1]
+const HI = '#eb6834' // 대화에서 가리킨 동네
 
 /** 가로 월 총비용, 세로 통근 시간. 둘 다 더 나은 동이 없는 동(파레토)을 선으로 잇는다 */
-export default function TradeoffChart({ result, selected, onSelect }: Props) {
+export default function TradeoffChart({ result, selected, onSelect, highlight = [] }: Props) {
   const pts = result.scatter.filter((p) => p.x != null && p.y != null) as Pt[]
   const front = pts.filter((p) => p.pareto).sort((a, b) => a.x - b.x)
   const rest = pts.filter((p) => !p.pareto)
   const missing = result.scatter.length - pts.length
+  const hi = new Set(highlight)
+  const hiNames = pts.filter((p) => hi.has(p.dong_code)).map((p) => p.name)
   const scores = new Map(result.ranked.map((d) => [d.dong_code, d.score]))
   const low = Math.min(...scores.values())
   const high = Math.max(...scores.values())
@@ -23,7 +26,7 @@ export default function TradeoffChart({ result, selected, onSelect }: Props) {
     const dot = props as DotProps
     const score = scores.get(dot.payload.dong_code)
     const color = dot.payload.rank <= 3 ? 'var(--brand)' : scoreColor(score ?? low, low, high)
-    return <Dot {...dot} selected={selected} color={color} strong={strong} />
+    return <Dot {...dot} selected={selected} color={color} strong={strong} hi={hi} />
   }
 
   return (
@@ -32,6 +35,9 @@ export default function TradeoffChart({ result, selected, onSelect }: Props) {
         왼쪽 아래로 갈수록 싸고 가까워요. 진한 점을 이은 선은 <strong>더 싸면서 더 가까운 동네가 없는</strong> 선택지예요.<br />
         선 위의 동네끼리는 돈과 시간을 맞바꾸는 관계입니다.
       </p>
+      {hiNames.length > 0 && (
+        <p className="chart-hi"><span className="chart-hi-dot" aria-hidden="true" />대화에서 물어본 동네: {hiNames.join(', ')}</p>
+      )}
       <div className="chart-box">
         <ResponsiveContainer width="100%" height="100%">
           <ScatterChart margin={{ top: 16, right: 24, bottom: 28, left: 8 }}>
@@ -64,26 +70,28 @@ export default function TradeoffChart({ result, selected, onSelect }: Props) {
   )
 }
 
-type DotProps = { cx: number; cy: number; payload: Pt; selected: string | null; color: string; strong?: boolean }
+type DotProps = { cx: number; cy: number; payload: Pt; selected: string | null; color: string; strong?: boolean; hi: Set<string> }
 
-function Dot({ cx, cy, payload, selected, color, strong }: DotProps) {
+function Dot({ cx, cy, payload, selected, color, strong, hi }: DotProps) {
   const isSel = payload.dong_code === selected
+  const isHi = hi.has(payload.dong_code)
   const isTop = payload.rank >= 1 && payload.rank <= 3
-  const r = isTop ? 11 : isSel ? 8 : strong ? 6 : 5
+  const r = isTop ? 11 : isSel || isHi ? 8 : strong ? 6 : 5
   const outline = isTop ? '#74511a' : LINE
   return (
     <g style={{ cursor: 'pointer' }}>
       <circle cx={cx} cy={cy} r={r + 2} fill="#fff" />
       <circle cx={cx} cy={cy} r={r} fill={payload.estimated && !isTop ? '#fff' : color} stroke={outline}
         strokeWidth={isTop || strong || payload.estimated ? 2 : 1} strokeDasharray={isTop && payload.estimated ? '3 2' : undefined} />
-      {isSel && <circle cx={cx} cy={cy} r={r + 4} fill="none" stroke={INK} strokeWidth={1.5} />}
+      {isHi && <circle cx={cx} cy={cy} r={r + 4} fill="none" stroke={HI} strokeWidth={2.5} />}
+      {isSel && !isHi && <circle cx={cx} cy={cy} r={r + 4} fill="none" stroke={INK} strokeWidth={1.5} />}
       {isTop && (
         <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight={700} fill={INK} pointerEvents="none">
           {payload.rank}
         </text>
       )}
-      {isSel && (
-        <text x={cx + r + 4} y={cy - r} fontSize={12} fontWeight={700} fill={INK}>
+      {(isSel || isHi) && (
+        <text x={cx + r + 6} y={cy - r} fontSize={12} fontWeight={700} fill={INK}>
           {payload.name}
         </text>
       )}

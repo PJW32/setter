@@ -31,6 +31,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('map')
   const [selected, setSelected] = useState<string | null>(null)
+  const [highlight, setHighlight] = useState<string[]>([]) // 답변이 가리킨 동네 (비교 탭·산점도 강조)
   const [mobileView, setMobileView] = useState<'chat' | 'results'>('chat')
   const idRef = useRef(0)
 
@@ -44,7 +45,7 @@ export default function App() {
       setLogs([])
       setSelected(null)
       setMobileView(s.result ? 'results' : 'chat')
-      setItems(s.messages.map((m) => ({ id: ++idRef.current, kind: m.role, text: m.text, source: m.source })))
+      setItems(s.messages.map((m) => ({ id: ++idRef.current, kind: m.role, text: m.text, source: m.source, attachments: m.attachments })))
       setError(null)
     } catch (e) {
       setError(`서버에 연결하지 못했어요. 백엔드가 켜져 있는지 확인해 주세요. (${(e as Error).message})`)
@@ -64,6 +65,7 @@ export default function App() {
         break
       case 'result':
         setMobileView('results')
+        setHighlight([])
         if (ev.what_if) {
           setHypo(ev.payload)
         } else {
@@ -72,7 +74,13 @@ export default function App() {
         }
         break
       case 'message':
-        setItems((it) => [...it, { id: ++idRef.current, kind: 'assistant', text: ev.text, source: ev.source }])
+        setItems((it) => [...it, { id: ++idRef.current, kind: 'assistant', text: ev.text, source: ev.source, attachments: ev.attachments }])
+        if (ev.focus?.dong_codes.length) {
+          // 질문한 동네에 맞춰 오른쪽 화면을 옮긴다: 한 곳 → 지도, 비교 → 후보 비교, 통근·비용 → 산점도
+          setTab(ev.focus.tab)
+          setSelected(ev.focus.dong_codes[0])
+          setHighlight(ev.focus.dong_codes)
+        }
         break
       case 'error':
         setItems((it) => [...it, { id: ++idRef.current, kind: 'error', text: ev.detail }])
@@ -107,6 +115,13 @@ export default function App() {
     setTab('compare')
   }
 
+  // 답변 속 동네 표에서 "지도에서 보기"
+  function focusDong(code: string) {
+    setSelected(code)
+    setTab('map')
+    setMobileView('results')
+  }
+
   return (
     <div className="app" data-mobile-view={error ? 'results' : mobileView}>
       <StationSign state={state} busy={busy} onReset={() => load(true)} />
@@ -117,7 +132,7 @@ export default function App() {
       </div>}
 
       <aside className="chat-col" aria-label="대화">
-        <Chat items={items} busy={busy} onSend={send} disabled={!sessionId} hasResult={!!result} />
+        <Chat items={items} busy={busy} onSend={send} disabled={!sessionId} hasResult={!!result} onFocusDong={focusDong} />
       </aside>
 
       <main className="work-col">
@@ -203,9 +218,9 @@ export default function App() {
           ) : tab === 'table' ? (
             <RankingTable result={shown} onCompare={openComparison} />
           ) : tab === 'tradeoff' ? (
-            <TradeoffChart result={shown} selected={selected} onSelect={setSelected} />
+            <TradeoffChart result={shown} selected={selected} onSelect={setSelected} highlight={highlight} />
           ) : (
-            <CompareCards result={shown} selected={selected} conversionRate={state?.params.conversion_rate ?? 0.05} />
+            <CompareCards result={shown} selected={selected} focus={highlight} conversionRate={state?.params.conversion_rate ?? 0.05} />
           )}
         </section>
 

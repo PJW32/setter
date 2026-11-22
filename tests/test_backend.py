@@ -44,18 +44,28 @@ class FakeLLM:
 
     enforce_comparisons = staticmethod(llm.enforce_comparisons)
 
-    def __init__(self, turns, explanation="상위 동을 설명합니다."):
+    def __init__(self, turns, explanation="상위 동을 설명합니다.", answer_fn=None):
         self.turns = list(turns)
         self.explanation = explanation
+        self.answer_fn = answer_fn or (lambda f: "지금 결과로 답합니다.")
         self.facts = []
+        self.answer_facts = []
+        self.snapshots = []
 
     def extract(self, snapshot, text, last_q):
+        self.snapshots.append(snapshot)
         return {**BASE, **self.turns.pop(0)}, {"ms": 1}
 
     def explain(self, facts):
         self.facts.append(facts)
         bad = llm.unknown_numbers(self.explanation, facts)
         return (None, {"rejected_numbers": [bad]}) if bad else (self.explanation, {"ms": 1})
+
+    def answer(self, facts):
+        self.answer_facts.append(facts)
+        text = self.answer_fn(facts)
+        bad = llm.unknown_numbers(text, facts)
+        return (None, {"rejected_numbers": [bad]}) if bad else (text, {"ms": 1})
 
 
 def run(agent, s, text):
@@ -224,6 +234,194 @@ class DestinationStateTest(unittest.TestCase):
             evs = run(agent, agent.new_session(), "추천")
         self.assertEqual(types(evs)[-2:], ["error", "done"])
         self.assertNotIn("private provider detail", evs[-2]["detail"])
+
+
+FIRST = {"intent": "update", "destination": "가상역", "set_constraints": {"max_commute_min": 45}}
+
+
+class IntentRoutingTest(unittest.TestCase):
+    """조건이 바뀌지 않는 발화는 순위를 다시 계산하지 않고, 의도에 맞게 답한다."""
+
+    def setUp(self):
+        self.data = FakeData()
+
+    def start(self, *turns, **kw):
+        fake = FakeLLM([FIRST, *turns], **kw)
+        agent = Agent(self.data, fake)
+        s = agent.new_session()
+        run(agent, s, "가상역 출근, 통근 45분 이내")
+        return agent, s, fake
+
+    def test_first_result_message_has_top3_table(self):
+        agent, s, fake = self.start()
+        msg = next(e for e in s.messages if e["role"] == "assistant")
+        table = msg["attachments"][0]
+        self.assertEqual(table["kind"], "dongs")
+        self.assertEqual([r["status"] for r in table["rows"]], ["1위", "2위", "3위"])
+        self.assertTrue(fake.facts[-1]["첫_결과"])
+
+    def test_smalltalk_short_reply_keeps_result(self):
+        agent, s, fake = self.start({"intent": "smalltalk"})
+        result = s.result
+        evs = run(agent, s, "고마워요")
+        self.assertNotIn("result", types(evs))
+        self.assertNotIn("interpretation", types(evs))
+        msg = next(e for e in evs if e["type"] == "message")
+        self.assertIn("다행", msg["text"])
+        self.assertIs(s.result, result)
+        self.assertEqual(fake.answer_facts, [])  # LLM 답변도 부르지 않음
+
+    def test_question_about_excluded_dong_answers_without_recompute(self):
+        agent, s, fake = self.start({"intent": "question", "mentioned_dongs": ["가동"]})
+        result = s.result
+        evs = run(agent, s, "가동은 왜 순위에 없어?")
+        self.assertNotIn("result", types(evs))
+        self.assertIs(s.result, result)
+        self.assertEqual(self.data.calls, 1)
+        target = fake.answer_facts[-1]["대상_동네"][0]
+        self.assertIn("조건 밖", target["상태"])
+        self.assertTrue(any("통근" in w for w in target["제외_이유"]))
+        rows = next(e for e in evs if e["type"] == "message")["attachments"][0]["rows"]
+        self.assertTrue(rows[0]["excluded"])
+        self.assertIn("answer", [e.get("step") for e in evs if e["type"] == "log"])
+
+    def test_dong_found_from_text_even_if_llm_misses_it(self):
+        agent, s, fake = self.start({"intent": "question"})
+        run(agent, s, "다동이랑 라동은 어때?")
+        names = [d["동"].split()[-1] for d in fake.answer_facts[-1]["대상_동네"]]
+        self.assertEqual(sorted(names), ["다동", "라동"])
+
+    def test_comparison_difference_is_computed_by_code(self):
+        def answer_fn(f):
+            cost = next(i for i in f["비교"][0]["항목"] if i["항목"] == "월 총비용")
+            return f"월 총비용은 {cost['더_나은_쪽']}이 {cost['차이_크기']}만 원 낮아요."
+
+        agent, s, fake = self.start({"intent": "question"}, answer_fn=answer_fn)
+        r1, r2 = [e for e in s.result.ranked if e["raw"]["monthly_cost"] is not None][:2]
+        fake.turns[0]["mentioned_ranks"] = [r1["rank"], r2["rank"]]
+        evs = run(agent, s, "두 동네 월 총비용 차이가 얼마야?")
+        f = fake.answer_facts[-1]
+        cost = next(i for i in f["비교"][0]["항목"] if i["항목"] == "월 총비용")
+        self.assertAlmostEqual(cost["차이_A빼기B"], round(r1["raw"]["monthly_cost"] - r2["raw"]["monthly_cost"], 1))
+        msg = next(e for e in evs if e["type"] == "message")
+        self.assertEqual(msg["source"], "llm")  # 코드가 넘긴 차이를 쓰면 숫자 검사를 통과
+        self.assertIn("compare", msg["attachments"][0])
+
+    def test_answer_with_made_up_number_falls_back_to_template(self):
+        agent, s, fake = self.start({"intent": "question", "mentioned_dongs": ["다동"]},
+                                    answer_fn=lambda f: "다동은 월 98765만 원이에요.")
+        evs = run(agent, s, "다동은 어때?")
+        msg = next(e for e in evs if e["type"] == "message")
+        self.assertEqual(msg["source"], "template")
+        self.assertIn("다동", msg["text"])
+
+    def test_unknown_dong_is_reported_missing(self):
+        agent, s, fake = self.start({"intent": "question", "mentioned_dongs": ["없는동"]})
+        run(agent, s, "없는동은 어때?")
+        self.assertEqual(fake.answer_facts[-1]["찾지_못한_동네"], ["없는동"])
+
+    def test_unavailable_info_gets_how_to_check(self):
+        agent, s, fake = self.start({"intent": "question", "unsupported": ["치안"]})
+        evs = run(agent, s, "여기 치안은 어때?")
+        att = next(e for e in evs if e["type"] == "message")["attachments"]
+        guide = next(a for a in att if a["kind"] == "guides")
+        self.assertIn("생활안전지도", [l["label"] for g in guide["items"] for l in g["links"]])
+        self.assertTrue(fake.answer_facts[-1]["확인_방법"])
+
+    def test_refer_back_uses_previous_targets(self):
+        agent, s, fake = self.start({"intent": "question", "mentioned_dongs": ["다동"]},
+                                    {"intent": "question", "unsupported": ["치안"]})
+        run(agent, s, "다동은 어때?")
+        run(agent, s, "그 동네 치안은 어때?")
+        self.assertEqual(fake.answer_facts[-1]["대상_동네"][0]["동"].split()[-1], "다동")
+
+    def test_extract_sees_candidates_and_recent_history(self):
+        agent, s, fake = self.start({"intent": "question"})
+        run(agent, s, "아까 2위는?")
+        snap = fake.snapshots[-1]
+        self.assertIn("다동", snap["후보_동네"])
+        self.assertTrue(snap["현재_상위"][0].startswith("1위"))
+        self.assertEqual(snap["최근_대화"][0]["역할"], "user")
+
+    def test_condition_change_still_recomputes(self):
+        agent, s, fake = self.start({"intent": "update", "preference_changes": [
+            {"factor": "quiet", "level": "매우 중요", "evidence": "조용한 게 제일"}]})
+        evs = run(agent, s, "조용한 게 제일 중요해")
+        self.assertIn("result", types(evs))
+        self.assertFalse(fake.facts[-1]["첫_결과"])
+
+
+class GuidesAndUnitsTest(unittest.TestCase):
+    """확인 방법 범위, 숫자 단위, 화면 연동."""
+
+    def setUp(self):
+        self.data = FakeData()
+
+    def start(self, *turns, **kw):
+        fake = FakeLLM([FIRST, *turns], **kw)
+        agent = Agent(self.data, fake)
+        s = agent.new_session()
+        run(agent, s, "가상역 출근, 통근 45분 이내")
+        return agent, s, fake
+
+    def test_listing_keywords_get_listing_guide(self):
+        from backend import guides
+        for text in ("지금 이매동에 나와 있는 방 보여줘", "방 보여줘", "원룸 보여줘"):
+            self.assertEqual(guides.match([text])[0]["topic"], "실제 매물·현재 시세", text)
+
+    def test_outside_topic_gets_map_search_guide(self):
+        agent, s, fake = self.start({"intent": "question", "mentioned_dongs": ["다동"], "outside_topics": ["맛집"]})
+        evs = run(agent, s, "다동에 맛집 많아?")
+        guide = next(a for a in next(e for e in evs if e["type"] == "message")["attachments"] if a["kind"] == "guides")
+        item = guide["items"][0]
+        self.assertEqual(item["topic"], "맛집")
+        self.assertIn("map.kakao.com", item["links"][0]["url"])
+        self.assertIn("다동 맛집", item["links"][0]["label"])  # 질문한 동네 이름으로 검색
+
+    def test_known_topic_does_not_get_duplicate_default_guide(self):
+        from backend import guides
+        got = guides.match(["치안은 어때?"], outside=["치안"])
+        self.assertEqual([g["topic"] for g in got], ["치안·밤길"])
+
+    def test_counts_and_minutes_are_integers(self):
+        agent, s, fake = self.start({"intent": "question", "mentioned_dongs": ["다동", "라동"]})
+        evs = run(agent, s, "다동이랑 라동 비교해줘")
+        att = next(e for e in evs if e["type"] == "message")["attachments"][0]
+        for row in att["rows"]:
+            for k in ("commute", "station_walk", "bars"):
+                self.assertIsInstance(row[k], int, k)
+        items = {i["label"]: i for i in att["compare"]["items"]}
+        self.assertIsInstance(items["통근 시간"]["diff"], int)
+        self.assertIsInstance(items["주변 주점"]["a"], int)
+        self.assertIsInstance(items["월 총비용"]["a"], float)  # 금액은 소수 첫째 자리
+        facts = fake.answer_facts[-1]["대상_동네"][0]
+        self.assertIsInstance(facts["통근_분"], int)
+
+    def test_compare_attachment_has_factor_points_for_chart(self):
+        agent, s, fake = self.start({"intent": "question", "mentioned_dongs": ["다동", "라동"]})
+        evs = run(agent, s, "다동이랑 라동 비교해줘")
+        cmp = next(e for e in evs if e["type"] == "message")["attachments"][0]["compare"]
+        self.assertEqual([f["key"] for f in cmp["factors"]],
+                         ["monthly_cost", "commute", "station_access", "convenience", "quiet"])
+        rows = {r["name"]: r for r in s.result.ranked}
+        self.assertAlmostEqual(sum(f["a"] for f in cmp["factors"]), rows["다동"]["score"], places=0)
+
+    def test_focus_moves_right_panel(self):
+        agent, s, fake = self.start(
+            {"intent": "question", "mentioned_dongs": ["다동"]},
+            {"intent": "question", "mentioned_dongs": ["다동", "라동"]},
+            {"intent": "question", "mentioned_dongs": ["라동"]},
+            {"intent": "question"},
+        )
+        focus = lambda evs: next(e for e in evs if e["type"] == "message")["focus"]  # noqa: E731
+        f1 = focus(run(agent, s, "다동은 어때?"))
+        self.assertEqual(f1["tab"], "map")
+        f2 = focus(run(agent, s, "다동이랑 라동 비교해줘"))
+        self.assertEqual(f2["tab"], "compare")
+        self.assertEqual(len(f2["dong_codes"]), 2)
+        f3 = focus(run(agent, s, "라동은 통근이 얼마나 걸려?"))
+        self.assertEqual(f3["tab"], "tradeoff")
+        self.assertIsNone(focus(run(agent, s, "조건 어떻게 돼?")))  # 대상이 없으면 화면은 그대로
 
 
 class ApiTest(unittest.TestCase):

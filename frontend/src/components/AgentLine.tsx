@@ -10,8 +10,10 @@ const STEP_NAME: Record<LogStep, string> = {
   score: '점수 계산',
   tradeoff: '상충 확인',
   explain: '설명 작성',
+  reply: '짧게 답하기',
+  answer: '지금 결과로 답하기',
 }
-const ORDER: LogStep[] = ['extract', 'destination', 'region', 'collect', 'commute', 'dataset', 'score', 'tradeoff', 'explain']
+const ORDER: LogStep[] = ['extract', 'reply', 'answer', 'destination', 'region', 'collect', 'commute', 'dataset', 'score', 'tradeoff', 'explain']
 
 /** 에이전트 작업 로그를 노선도처럼: 단계 = 역, 진행 중인 역에 열차 점 */
 export default function AgentLine({ logs, busy }: { logs: LogEvent[]; busy: boolean }) {

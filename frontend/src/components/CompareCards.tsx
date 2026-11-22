@@ -2,14 +2,17 @@ import { FACTORS, fmt, rawText, violationText, won } from '../lib/format'
 import type { DongCard, ResultPayload } from '../lib/types'
 import { Flags, ScoreBar } from './RankingTable'
 
-type Props = { result: ResultPayload; selected: string | null; conversionRate: number }
+type Props = { result: ResultPayload; selected: string | null; conversionRate: number; focus?: string[] }
 
-/** 상위 3곳 (고른 동이 3위 밖이면 그 동을 마지막 칸에) */
-export default function CompareCards({ result, selected, conversionRate }: Props) {
+/** 상위 3곳 (고른 동이 3위 밖이면 그 동을 마지막 칸에).
+ *  대화에서 두 곳 이상을 비교하면(focus) 그 동네들을 나란히 보여준다. */
+export default function CompareCards({ result, selected, conversionRate, focus = [] }: Props) {
   const top = result.ranked.slice(0, 3)
   const all = [...result.ranked, ...result.excluded]
+  const focused = focus.map((c) => all.find((d) => d.dong_code === c)).filter((d): d is DongCard => !!d)
   const sel = selected ? all.find((d) => d.dong_code === selected) : undefined
-  const cards = sel && !top.some((d) => d.dong_code === sel.dong_code) ? [...top.slice(0, 2), sel] : top
+  const cards = focused.length >= 2 ? focused
+    : sel && !top.some((d) => d.dong_code === sel.dong_code) ? [...top.slice(0, 2), sel] : top
 
   if (!cards.length) return <p className="panel-empty">조건을 만족하는 동네가 없어요. 조건을 조금 풀어 보세요.</p>
   return (

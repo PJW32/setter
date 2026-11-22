@@ -141,6 +141,43 @@ a { color: var(--ink); text-underline-offset: 3px; }
 .bubble-assistant { align-self: flex-start; background: var(--bg); border-bottom-left-radius: 4px; }
 .bubble-error { align-self: stretch; background: var(--err-bg); color: var(--err); font-size: 13.5px; margin: 0; }
 .bubble-note { display: block; margin-top: 6px; font-size: 11.5px; color: var(--muted); }
+
+/* 답변에 붙는 자료: 동네 표, 확인 방법 */
+.msg-atts { white-space: normal; display: grid; gap: 8px; margin-top: 10px; }
+.att { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r-sm); padding: 8px 10px; font-size: 13px; }
+.att h3 { margin: 0 0 6px; font-size: 13px; font-weight: 700; }
+.att-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.att-table th, .att-table td { padding: 4px 6px; border-bottom: 1px solid var(--rule-soft); text-align: left; vertical-align: top; font-weight: 400; }
+.att-table thead th { color: var(--muted); font-size: 12px; }
+.att-table tbody th { font-weight: 500; }
+.att-table tbody th[scope="row"], .att-table thead th { white-space: nowrap; }
+.att-table th, .att-table td { font-size: 12.5px; }
+.att-table .num { text-align: right; white-space: nowrap; }
+.att-status { display: inline-block; min-width: 30px; margin-right: 6px; font-size: 11.5px; font-weight: 700; }
+.att-out { color: var(--err); }
+.att-reason { display: block; font-size: 11.5px; color: var(--muted); font-weight: 400; }
+.att-diff { color: var(--ink-2); white-space: nowrap; }
+.att-actions { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; font-size: 12.5px; }
+.att-guides ul { margin: 0; padding-left: 16px; display: grid; gap: 4px; line-height: 1.5; }
+.att-links { display: inline-flex; gap: 8px; margin-left: 6px; }
+.interp-guide-note { margin: 4px 0 0; font-size: 12px; font-weight: 400; }
+
+/* 대화창 비교 막대: 동네 A(진한색)와 B(옅은 파랑)를 요인마다 나란히 */
+.fbars { margin: 0 0 8px; display: grid; gap: 5px; }
+.fbars-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; margin-bottom: 2px; }
+.fbars-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.fbars-note { color: var(--muted); }
+.fbars-key { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.fbars-row { display: grid; grid-template-columns: 64px 1fr; gap: 6px; align-items: center; }
+.fbars-label { font-size: 12px; color: var(--ink-2); }
+.fbars-pair { display: grid; gap: 2px; }
+.fbars-line { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.fbars-bar { height: 8px; border-radius: 0 4px 4px 0; min-width: 2px; }
+.fbars-a { background: #15222b; }
+.fbars-b { background: #6da7ec; }
+.fbars-val { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.chart-hi { margin: 0 0 6px; font-size: 12.5px; display: flex; align-items: center; gap: 6px; }
+.chart-hi-dot { width: 10px; height: 10px; border-radius: 50%; background: #eb6834; display: inline-block; }
 .typing { color: var(--muted); font-size: 13px; margin: 0; }
 
 .interp { border: 1px solid var(--rule); border-left: 3px solid var(--ink); border-radius: var(--r-sm); padding: 10px 12px; font-size: 13.5px; }

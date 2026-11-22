@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { CONSTRAINT_LABEL, FACTOR, constraintText } from '../lib/format'
-import type { ConstraintKey, FactorKey, Interpretation } from '../lib/types'
+import type { Attachment, ConstraintKey, FactorKey, Interpretation } from '../lib/types'
+import MessageAttachments from './MessageAttachments'
 
 export type ChatItem =
-  | { id: number; kind: 'user' | 'assistant'; text: string; source?: 'llm' | 'template' }
+  | { id: number; kind: 'user' | 'assistant'; text: string; source?: 'llm' | 'template'; attachments?: Attachment[] }
   | { id: number; kind: 'interpretation'; interp: Interpretation }
   | { id: number; kind: 'error'; text: string }
 
@@ -20,8 +21,9 @@ const FOLLOW_UPS = [
   ['조용한 동네', '주변 주점이 적은 동네를 더 중요하게 봐줘.'],
 ]
 
-export default function Chat({ items, busy, disabled, onSend, hasResult }: {
+export default function Chat({ items, busy, disabled, onSend, hasResult, onFocusDong }: {
   items: ChatItem[]; busy: boolean; disabled: boolean; onSend: (t: string) => void; hasResult: boolean
+  onFocusDong: (code: string) => void
 }) {
   const [text, setText] = useState('')
   const endRef = useRef<HTMLDivElement>(null)
@@ -61,6 +63,9 @@ export default function Chat({ items, busy, disabled, onSend, hasResult }: {
               : (
                 <div key={it.id} className={`bubble bubble-${it.kind}`}>
                   {it.text}
+                  {it.kind === 'assistant' && !!it.attachments?.length && (
+                    <MessageAttachments items={it.attachments} onFocusDong={onFocusDong} />
+                  )}
                   {it.kind === 'assistant' && it.source === 'template' && <span className="bubble-note">자동 요약</span>}
                 </div>
               ),
@@ -174,6 +179,7 @@ function InterpretationCard({ it }: { it: Interpretation }) {
         <div className="interp-unsupported">
           <p>데이터로 확인할 수 없어 직접 확인이 필요해요</p>
           <ul>{it.unsupported.map((u) => <li key={u}>{u}</li>)}</ul>
+          {!!it.guides?.length && <p className="interp-guide-note">확인하는 방법은 아래 답변에 정리했어요.</p>}
         </div>
       )}
 
