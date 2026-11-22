@@ -36,6 +36,11 @@ CASES = [
     ("통근 30분 이내면 어떻게 돼?", {"intent": "what_if", "constraints": {"max_commute_min": 30}}),
     ("관리비 싼 곳", {"unsupported_or_cost": True}),
     ("아까보다 월세는 덜 중요해", {"levels": {"monthly_cost": "중요"}, "start": {"monthly_cost": "매우 중요"}}),
+    # 의도 분류 (조건을 바꾸지 않는 발화는 순위를 다시 계산하지 않는다)
+    ("고마워요", {"intent_in": ["smalltalk", "confirm"], "no_level_change": True, "no_constraints": True}),
+    ("정자동은 왜 순위에 없어?", {"intent": "question", "mentioned": ["정자동"], "no_level_change": True, "no_constraints": True}),
+    ("1위랑 2위 비교해줘", {"intent": "question", "ranks": [1, 2], "no_level_change": True}),
+    ("그 동네 치안은 어때?", {"intent": "question", "no_level_change": True, "no_constraints": True}),
 ]
 
 
@@ -81,6 +86,13 @@ def check(ch: dict, exp: dict, start: dict) -> list[str]:
             fails.append(f"{k} 해제 안 됨")
     if "intent" in exp and ch.get("intent") != exp["intent"]:
         fails.append(f"intent = {ch.get('intent')}")
+    if "intent_in" in exp and ch.get("intent") not in exp["intent_in"]:
+        fails.append(f"intent = {ch.get('intent')}")
+    for name in exp.get("mentioned", []):
+        if name not in (ch.get("mentioned_dongs") or []):
+            fails.append(f"mentioned_dongs = {ch.get('mentioned_dongs')}")
+    if "ranks" in exp and sorted(ch.get("mentioned_ranks") or []) != exp["ranks"]:
+        fails.append(f"mentioned_ranks = {ch.get('mentioned_ranks')}")
     if exp.get("unsupported_or_cost") and not (ch["unsupported"] or rank["monthly_cost"] > 2):
         fails.append("관리비를 확인 불가로도, 비용 선호로도 받지 않음")
     return fails
@@ -92,7 +104,9 @@ def main() -> None:
     for i, (text, exp) in enumerate(CASES, 1):
         start = {**BASE_LEVELS, **exp.get("start", {})}
         snapshot = {"levels": start, "constraints": {}, "params": {"house_types": ["오피스텔", "단독다가구"]},
-                    "destination": "판교역"}
+                    "destination": "판교역", "후보_동네": ["이매동", "풍덕천동", "서현동", "정자동", "수내동"],
+                    "현재_상위": ["1위 이매동", "2위 풍덕천동", "3위 서현동"],
+                    "최근_대화": [{"역할": "assistant", "내용": "1위 이매동, 2위 풍덕천동, 3위 서현동입니다."}]}
         ch, info = llm.extract(snapshot, text)
         fixes = llm.enforce_comparisons(ch, start)
         fails = check(ch, exp, start)

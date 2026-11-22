@@ -250,3 +250,25 @@ interface Tradeoff {factors: [string, string]; correlation: number; message: str
 $s = Invoke-RestMethod -Method Post http://localhost:8000/api/sessions
 curl.exe -N -X POST "http://localhost:8000/api/sessions/$($s.session_id)/messages" -H "Content-Type: application/json" -d '{\"text\": \"판교역으로 출근해요\"}'
 ```
+
+## 7. 2026-11-22 추가: 의도별 답변과 화면 자료
+
+- `intent` 에 `smalltalk`(인사·감사) 추가. 조건 변경이 없으면 `interpretation`·`result` 이벤트 없이 `log` → `message` → `done`
+- `LogStep` 에 `reply`(짧은 대답), `answer`(지금 결과로 답변) 추가
+- `interpretation.guides?: Guide[]` (확인 불가 항목의 확인 방법)
+- `message.attachments?: Attachment[]`, `SessionView.messages[].attachments?` (세션을 다시 불러와도 남음)
+
+```ts
+interface Guide {topic: string; how: string; links: {label: string; url: string}[]}
+interface AttachmentRow {
+  dong_code: string; name: string; sgg: string; status: string;   // "3위" | "조건 밖"
+  excluded: boolean; score: number | null; monthly_cost: number | null; commute: number | null;
+  station_walk: number | null; bars: number | null; reason: string | null;  // 제외 이유
+}
+interface CompareItem {label: string; unit: string; a: number | null; b: number | null;
+  diff: number | null;       // A − B
+  abs_diff: number | null; better: string | null}   // 유리한 동 이름 (같으면 null)
+type Attachment =
+  | {kind: "dongs"; title: string; rows: AttachmentRow[]; compare?: {a: string; b: string; items: CompareItem[]}}
+  | {kind: "guides"; title: string; items: Guide[]};
+```
