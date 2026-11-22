@@ -253,6 +253,7 @@ class Agent:
     # ------------------------------------------------------------------ 도우미
     def _say(self, s: Session, text: str, source: str, follow_up: bool = False,
              attachments: list[dict] | None = None, focus: dict | None = None):
+        text = presenter.group_thousands(text)
         msg = {"role": "assistant", "text": text, "source": source}
         if attachments:
             msg["attachments"] = attachments
