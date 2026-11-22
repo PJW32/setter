@@ -9,7 +9,7 @@ import RankingTable from './components/RankingTable'
 import StationSign from './components/StationSign'
 import TradeoffChart from './components/TradeoffChart'
 import { createSession, restoreSession, sendMessage } from './lib/api'
-import { FACTORS } from './lib/format'
+import { FACTORS, rawText } from './lib/format'
 import type { AgentEvent, LogEvent, ResultPayload, StateSnapshot } from './lib/types'
 
 type Tab = 'map' | 'table' | 'tradeoff' | 'compare'
@@ -31,6 +31,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('map')
   const [selected, setSelected] = useState<string | null>(null)
+  const [mobileView, setMobileView] = useState<'chat' | 'results'>('chat')
   const idRef = useRef(0)
 
   const load = useCallback(async (fresh: boolean) => {
@@ -42,6 +43,7 @@ export default function App() {
       setHypo(null)
       setLogs([])
       setSelected(null)
+      setMobileView(s.result ? 'results' : 'chat')
       setItems(s.messages.map((m) => ({ id: ++idRef.current, kind: m.role, text: m.text, source: m.source })))
       setError(null)
     } catch (e) {
@@ -61,6 +63,7 @@ export default function App() {
         if (!ev.what_if) setState(ev.state)
         break
       case 'result':
+        setMobileView('results')
         if (ev.what_if) {
           setHypo(ev.payload)
         } else {
@@ -92,10 +95,17 @@ export default function App() {
   }, [sessionId, busy, onEvent])
 
   const shown = hypo ?? result
+  const candidates = shown ? [...shown.ranked, ...shown.excluded] : []
+  const activeCandidate = candidates.find((d) => d.dong_code === selected) ?? shown?.ranked[0]
 
   return (
-    <div className="app">
+    <div className="app" data-mobile-view={error ? 'results' : mobileView}>
       <StationSign state={state} busy={busy} onReset={() => load(true)} />
+
+      {!error && <div className="mobile-navigation" role="group" aria-label="화면 선택">
+        <button type="button" aria-pressed={mobileView === 'chat'} onClick={() => setMobileView('chat')}>조건 입력</button>
+        <button type="button" aria-pressed={mobileView === 'results'} onClick={() => setMobileView('results')}>결과 보기</button>
+      </div>}
 
       <aside className="chat-col" aria-label="대화">
         <Chat items={items} busy={busy} onSend={send} disabled={!sessionId} />
@@ -139,7 +149,28 @@ export default function App() {
               </ul>
             </div>
           ) : tab === 'map' ? (
-            <MapView result={shown} selected={selected} onSelect={setSelected} />
+            <>
+              <MapView result={shown} selected={selected} onSelect={setSelected} />
+              {activeCandidate && (
+                <section className="candidate-summary" aria-label="지도 후보 요약">
+                  <header>
+                    <h2>{activeCandidate.name} <small>{activeCandidate.sgg}</small></h2>
+                    <button type="button" className="link-btn" onClick={() => {
+                      setSelected(activeCandidate.dong_code)
+                      setTab('compare')
+                    }}>비교에서 보기</button>
+                  </header>
+                  <dl>
+                    {FACTORS.map((f) => (
+                      <div key={f.key}>
+                        <dt>{f.key === 'quiet' ? '주변 주점' : f.label}</dt>
+                        <dd>{rawText(f.key, activeCandidate.raw[f.key])}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
+              )}
+            </>
           ) : tab === 'table' ? (
             <RankingTable result={shown} selected={selected} onSelect={setSelected} />
           ) : tab === 'tradeoff' ? (

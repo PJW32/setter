@@ -47,11 +47,28 @@ a { color: var(--ink); text-underline-offset: 3px; }
 .chat-col { border-right: 1px solid var(--rule); background: var(--surface); min-height: 0; }
 .work-col { min-height: 0; overflow-y: auto; padding: 16px 24px 32px; display: flex; flex-direction: column; gap: 12px; }
 .work-col > * { flex-shrink: 0; }
+.mobile-navigation { display: none; }
+
+.candidate-summary { padding: 14px 18px 18px; border-top: 1px solid var(--rule); }
+.candidate-summary header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.candidate-summary h2 { margin: 0; font-size: 18px; text-wrap: balance; }
+.candidate-summary small { font-size: 13px; color: var(--muted); font-weight: 400; }
+.candidate-summary header button { flex-shrink: 0; }
+.candidate-summary dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px; margin: 12px 0 0; }
+.candidate-summary dl div { padding: 8px 10px; border-radius: var(--r-sm); background: var(--bg); }
+.candidate-summary dt { color: var(--muted); font-size: 12px; }
+.candidate-summary dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
 
 @media (max-width: 1000px) {
   .app { grid-template-columns: 1fr; grid-template-rows: auto auto auto; height: auto; }
   .chat-col { border-right: 0; border-bottom: 1px solid var(--rule); height: 70vh; }
   .work-col { overflow: visible; padding: 16px; }
+  .mobile-navigation { display: flex; gap: 6px; padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--rule); }
+  .mobile-navigation button { flex: 1; min-height: 44px; border: 1px solid var(--rule); border-radius: var(--r-sm); background: var(--surface); cursor: pointer; }
+  .mobile-navigation button[aria-pressed="true"] { background: var(--sel); border-color: var(--ink); font-weight: 700; }
+  .app[data-mobile-view="results"] .chat-col,
+  .app[data-mobile-view="chat"] .work-col { display: none; }
+  .map-wrap .map { height: clamp(280px, 48dvh, 440px); }
 }
 
 /* ------------------------------------------------------------------ 상단 표지판 */
