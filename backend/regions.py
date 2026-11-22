@@ -19,6 +19,9 @@ from engine.data import Dataset, Deal
 from . import store
 
 OUTER_POOL = ThreadPoolExecutor(max_workers=4)
+# 내부 OUTER_POOL/region.POOL과 분리해 중첩 작업의 교착을 피한다.
+# 여러 검색이 들어와도 시군구 수집은 프로세스 전체에서 두 곳까지다.
+DISTRICT_POOL = ThreadPoolExecutor(max_workers=2)
 _sgg_locks: dict[str, threading.Lock] = {}
 _locks_guard = threading.Lock()
 
@@ -178,11 +181,12 @@ def _commute(dong: dict, dest: Destination) -> dict:
 
 
 def ensure_commutes(dest: Destination, dongs: list[dict], log=_noop) -> dict[str, dict]:
+    started = time.monotonic()
     codes = [d["dong_code"] for d in dongs]
     have = store.commutes(dest.key, codes)
     todo = [d for d in dongs if d["dong_code"] not in have]
     if not todo:
-        log("commute", "done", f"통근 {len(have)}곳 저장된 값 사용")
+        log("commute", "done", f"통근 {len(have)}곳 저장된 값 사용", ms=round((time.monotonic() - started) * 1000))
         return have
     log("commute", "running", f"통근 계산: 새로 {len(todo)}곳 (저장된 값 {len(have)}곳)")
     new, failed = {}, 0
@@ -193,7 +197,7 @@ def ensure_commutes(dest: Destination, dongs: list[dict], log=_noop) -> dict[str
             new[d["dong_code"]] = r
     store.save_commutes(dest.key, new)
     msg = f"통근 계산 완료: {len(new)}곳" + (f", 실패 {failed}곳 (통근 데이터 없음으로 표시)" if failed else "")
-    log("commute", "done" if not failed else "warn", msg)
+    log("commute", "done" if not failed else "warn", msg, ms=round((time.monotonic() - started) * 1000))
     return {**have, **new}
 
 
@@ -207,7 +211,10 @@ def _safe(fn, *a):
 # ------------------------------------------------------------------ Dataset
 def build_dataset(dest: Destination, sgg_codes: list[str], radius_km: float, log=_noop) -> Dataset:
     target = (dest.lon, dest.lat)
-    dongs = [d for d in store.dongs_in(sgg_codes) if region.meters((d["lon"], d["lat"]), target) <= radius_km * 1000]
+    dongs = sorted(
+        (d for d in store.dongs_in(sgg_codes) if region.meters((d["lon"], d["lat"]), target) <= radius_km * 1000),
+        key=lambda d: d["dong_code"],
+    )
     commutes = ensure_commutes(dest, dongs, log)
     for d in dongs:
         c = commutes.get(d["dong_code"])
@@ -252,13 +259,31 @@ class DataService:
         return resolve_destination(query)
 
     def dataset_for(self, dest: Destination, log=_noop) -> Dataset:
+        started = time.monotonic()
+        stage_started = started
         log("region", "running", f"{dest.label} 반경 {self.radius_km:g}km 후보 지역 찾는 중")
         sggs = candidate_sggs(dest, self.radius_km)
         cached = [c for c in sggs if (store.sgg_status(c) or {}).get("status") == "done"]
-        log("region", "done", f"후보 시군구 {len(sggs)}곳 (저장됨 {len(cached)}, 새로 수집 {len(sggs) - len(cached)})")
-        for code, info in sggs.items():
-            ensure_sgg(code, info["sido"], info["name"], info["seed"], log)
+        log("region", "done", f"후보 시군구 {len(sggs)}곳 (저장됨 {len(cached)}, 새로 수집 {len(sggs) - len(cached)})",
+            ms=round((time.monotonic() - stage_started) * 1000))
+        stage_started = time.monotonic()
+        pending = [DISTRICT_POOL.submit(ensure_sgg, code, info["sido"], info["name"], info["seed"], log)
+                   for code, info in sggs.items() if code not in cached]
+        # 요청이 실패해도 이미 시작한 작업이 끝나기 전 반환하지 않는다.
+        error = None
+        for future in pending:
+            try:
+                future.result()
+            except Exception as exc:
+                if error is None:
+                    error = exc
+        if error is not None:
+            raise error
+        log("collect", "done", "후보 지역 준비 완료",
+            ms=round((time.monotonic() - stage_started) * 1000))
         ok = [c for c in sggs if (store.sgg_status(c) or {}).get("status") == "done"]
+        stage_started = time.monotonic()
         ds = build_dataset(dest, ok, self.radius_km, log)
-        log("dataset", "done", f"후보 동 {len(ds.dongs)}곳, 실거래 {sum(len(v) for v in ds.deals_by_dong.values()):,}건")
+        log("dataset", "done", f"후보 동 {len(ds.dongs)}곳, 실거래 {sum(len(v) for v in ds.deals_by_dong.values()):,}건",
+            ms=round((time.monotonic() - stage_started) * 1000), total_ms=round((time.monotonic() - started) * 1000))
         return ds
