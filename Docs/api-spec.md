@@ -24,9 +24,22 @@
 |---|---|---|
 | 400 | 빈 메시지, 순위가 없는데 what-if | `{"detail": "빈 메시지"}` |
 | 404 | 없는 세션 (서버 재시작 포함) | `{"detail": "세션이 없습니다"}` → 프론트는 새 세션을 만든다 |
+| 409 | 같은 세션의 메시지 또는 가정 비교가 처리 중 | `{"detail": "이 대화의 이전 요청을 처리 중입니다. 완료 후 다시 시도해 주세요."}` |
 | 422 | 본문 형식 오류 | FastAPI 기본 검증 오류 |
 
 이벤트 스트림 도중의 오류는 HTTP 상태가 아니라 `error` 이벤트로 온다.
+
+메시지와 가정 비교는 세션 단위로 하나씩 처리한다. 중복 요청은 대기열에 넣지 않고 409로 반환하며, 다른 세션은 독립적으로 처리한다. 정상 완료와 오류 종료 후에는 재요청할 수 있다. 세션과 진행 중 요청 정보가 프로세스 메모리에 있으므로 현재 구성은 단일 서버 프로세스를 전제로 한다.
+
+### 요청 검증
+
+- `messages.text`: 문자열, 최대 4,000자. 누락·null·숫자·길이 초과는 422, 빈 문자열·공백만 있는 입력은 400이다.
+- `what-if.changes`: 객체. 허용 필드는 `set_constraints`, `clear_constraints`, `params`, `preference_changes`다. 알 수 없는 최상위 변경 필드는 422다.
+- `set_constraints`: 조건 이름 → 유한한 JSON 숫자 또는 null. 숫자 문자열·불리언은 422다. null은 변경하지 않음을 의미하며, 해제는 `clear_constraints`로 요청한다.
+- `clear_constraints`: 문자열 배열.
+- `params`: `destination`(문자열), `house_types`(문자열 배열), `max_area_m2`(유한한 JSON 숫자), `new_contracts_only`(불리언). 필드는 선택이며 null은 변경하지 않는다. 알 수 없는 필드는 422다.
+- `preference_changes`: `{factor: 문자열, level: 문자열, evidence?: 문자열 | null}` 객체 배열.
+- 형식이 맞아도 지원하지 않는 요인·한도 범위는 기존 엔진의 `report.rejected`로 반환한다. HTTP 형식 검증은 `backend/schemas.py`가 담당한다.
 
 ---
 
@@ -112,7 +125,7 @@ POST 라서 `EventSource` 를 쓸 수 없다. `fetch` 로 `response.body` 를 �
 ### 이벤트 순서
 
 ```
-log(extract) → interpretation → [log(destination)] →
+log(extract) → [log(destination)] → interpretation →
   [log(region) → log(collect)* → log(commute) → log(dataset)]   ← 목적지가 바뀌었을 때
   → log(score) → [log(tradeoff)] → result → log(explain) → message → done
 ```
