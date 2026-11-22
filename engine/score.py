@@ -93,9 +93,12 @@ def _budget_check(f: DongFeature, c: Constraints, min_samples: int) -> dict:
     def need(d) -> float:  # 이 거래가 예산 안에 들어오려면 예산을 몇 배로 늘려야 하나
         r = []
         if c.max_monthly_rent is not None:
-            r.append(d.monthly_rent / c.max_monthly_rent if c.max_monthly_rent > 0 else math.inf)
+            r.append(d.monthly_rent / c.max_monthly_rent if c.max_monthly_rent > 0
+                     else (0.0 if d.monthly_rent == 0 else 1.0 + d.monthly_rent))
         if c.max_deposit is not None:
-            r.append(d.deposit / c.max_deposit if c.max_deposit > 0 else math.inf)
+            # 0원 거래는 0원 한도를 충족한다. 양수 거래도 유한한 위반도로 표현한다.
+            r.append(d.deposit / c.max_deposit if c.max_deposit > 0
+                     else (0.0 if d.deposit == 0 else 1.0 + d.deposit))
         return max(r)
 
     scales = sorted(need(d) for d in deals)
@@ -103,7 +106,14 @@ def _budget_check(f: DongFeature, c: Constraints, min_samples: int) -> dict:
     out = {"samples": len(deals), "in_budget": len(in_budget), "share": round(len(in_budget) / len(deals), 2)}
     if len(in_budget) >= MIN_IN_BUDGET:
         out["status"] = "pass"
-        out["monthly_cost_in_budget"] = statistics.median(d.monthly_total for d in in_budget)
+        totals = [d.monthly_total for d in in_budget]
+        out["monthly_cost_in_budget"] = statistics.median(totals) if all(v is not None for v in totals) else None
+        out["cost_detail"] = {
+            **f.detail.get("monthly_cost", {}),
+            "samples": len(in_budget),
+            "median_deposit": statistics.median(d.deposit for d in in_budget),
+            "median_rent": statistics.median(d.monthly_rent for d in in_budget),
+        }
         return out
     k = scales[MIN_IN_BUDGET - 1]
     out["status"] = "exclude"
@@ -113,15 +123,18 @@ def _budget_check(f: DongFeature, c: Constraints, min_samples: int) -> dict:
         if c.max_monthly_rent is not None:
             relax["max_monthly_rent"] = math.ceil(c.max_monthly_rent * k)
         if c.max_deposit is not None:
-            relax["max_deposit"] = math.ceil(c.max_deposit * k / 100) * 100
+            required = (c.max_deposit * k if c.max_deposit > 0 else
+                        max(d.deposit for d in sorted(deals, key=need)[:MIN_IN_BUDGET]))
+            relax["max_deposit"] = math.ceil(required / 100) * 100
     out["relax_to"] = relax
     return out
 
 
-def _check(f: DongFeature, c: Constraints, min_samples: int) -> tuple[list[dict], list[str], float | None]:
-    """(위반 목록, 표시용 플래그, 예산을 반영한 월 총비용)"""
+def _check(f: DongFeature, c: Constraints, min_samples: int) -> tuple[list[dict], list[str], float | None, dict]:
+    """위반 목록, 플래그, 월 총비용, 같은 비교군의 상세 통계를 반환한다."""
     violations, flags = [], []
     cost = f.raw.get("monthly_cost")
+    detail = {**f.detail, "monthly_cost": dict(f.detail.get("monthly_cost", {}))}
 
     if c.has_budget:
         b = _budget_check(f, c, min_samples)
@@ -132,6 +145,7 @@ def _check(f: DongFeature, c: Constraints, min_samples: int) -> tuple[list[dict]
             flags.append(f"예산 확인 불가 (실거래 {b['samples']}건)")
         else:
             cost = b["monthly_cost_in_budget"]
+            detail["monthly_cost"] = b["cost_detail"]
             flags.append(f"예산 안 거래 {b['in_budget']}/{b['samples']}건")
 
     commute = f.raw.get("commute")
@@ -143,11 +157,15 @@ def _check(f: DongFeature, c: Constraints, min_samples: int) -> tuple[list[dict]
                                "value": commute, "limit": c.max_commute_min,
                                "relax_to": {"max_commute_min": math.ceil(commute)}})
 
+    if detail["monthly_cost"].get("fare_missing"):
+        flags.append("교통비 확인 불가")
+    if c.max_monthly_cost is not None and cost is None:
+        flags.append("월 총비용 한도 확인 불가")
     if c.max_monthly_cost is not None and cost is not None and cost > c.max_monthly_cost:
         violations.append({"constraint": "monthly_cost", "severity": cost / c.max_monthly_cost,
                            "value": round(cost, 1), "limit": c.max_monthly_cost,
                            "relax_to": {"max_monthly_cost": math.ceil(cost)}})
-    return violations, flags, cost
+    return violations, flags, cost, detail
 
 
 # ------------------------------------------------------------------ 순위
@@ -165,7 +183,7 @@ def rank(features: list[DongFeature], levels: dict[str, str], constraints: Const
 
     ranked, excluded = [], []
     for f in features:
-        violations, flags, cost = _check(f, c, min_samples)
+        violations, flags, cost, detail = _check(f, c, min_samples)
         values = {**f.raw, "monthly_cost": cost}
         norm, estimated = {}, []
         for k in FACTOR_KEYS:
@@ -183,7 +201,7 @@ def rank(features: list[DongFeature], levels: dict[str, str], constraints: Const
             "contrib": contrib,
             "estimated": estimated,  # 데이터가 없어 중앙값으로 채운 요인
             "flags": flags + [f"{FACTORS[k].label} 데이터 부족" for k in estimated],
-            "detail": f.detail,
+            "detail": detail,
         }
         if violations:
             entry["violations"] = violations

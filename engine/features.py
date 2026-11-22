@@ -31,7 +31,7 @@ class Params:
 class DealCost:
     deposit: float
     monthly_rent: float
-    monthly_total: float  # 만원
+    monthly_total: float | None  # 만원, 교통비 미확인이면 총비용도 미확인
 
 
 @dataclass
@@ -94,10 +94,11 @@ def build_features(ds: Dataset, p: Params) -> list[DongFeature]:
         deals = []
         for deal in ds.deals_by_dong.get(d["dong_code"], []):
             if eligible(deal, p):
-                total = deal.monthly_rent + deal.deposit * p.conversion_rate / 12 + (fare_month or 0.0)
-                deals.append(DealCost(deal.deposit, deal.monthly_rent, round(total, 2)))
+                total = (deal.monthly_rent + deal.deposit * p.conversion_rate / 12 + fare_month
+                         if fare_month is not None else None)
+                deals.append(DealCost(deal.deposit, deal.monthly_rent, round(total, 2) if total is not None else None))
         n = len(deals)
-        if n >= p.min_samples:
+        if n >= p.min_samples and fare_month is not None:
             raw["monthly_cost"] = statistics.median(x.monthly_total for x in deals)
         else:
             raw["monthly_cost"] = None
