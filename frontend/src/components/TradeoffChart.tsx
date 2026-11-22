@@ -1,13 +1,13 @@
 import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts'
 
-import { fmt, won } from '../lib/format'
+import { fmt, MAP_SCORE_COLORS, scoreColor, won } from '../lib/format'
 import type { ResultPayload } from '../lib/types'
 
 type Props = { result: ResultPayload; selected: string | null; onSelect: (c: string) => void }
 type Pt = { dong_code: string; name: string; rank: number; x: number; y: number; pareto: boolean; estimated: boolean }
 
 const INK = '#15222B'
-const MUTED = '#9fb0b8'
+const LINE = MAP_SCORE_COLORS[1]
 
 /** 가로 월 총비용, 세로 통근 시간. 둘 다 더 나은 동이 없는 동(파레토)을 선으로 잇는다 */
 export default function TradeoffChart({ result, selected, onSelect }: Props) {
@@ -15,11 +15,21 @@ export default function TradeoffChart({ result, selected, onSelect }: Props) {
   const front = pts.filter((p) => p.pareto).sort((a, b) => a.x - b.x)
   const rest = pts.filter((p) => !p.pareto)
   const missing = result.scatter.length - pts.length
+  const scores = new Map(result.ranked.map((d) => [d.dong_code, d.score]))
+  const low = Math.min(...scores.values())
+  const high = Math.max(...scores.values())
+
+  function renderDot(props: unknown, strong = false) {
+    const dot = props as DotProps
+    const score = scores.get(dot.payload.dong_code)
+    const color = dot.payload.rank <= 3 ? 'var(--brand)' : scoreColor(score ?? low, low, high)
+    return <Dot {...dot} selected={selected} color={color} strong={strong} />
+  }
 
   return (
     <div className="tradeoff">
       <p className="chart-lede">
-        왼쪽 아래로 갈수록 싸고 가까워요. 진한 점을 이은 선은 <strong>더 싸면서 더 가까운 동네가 없는</strong> 선택지예요.
+        왼쪽 아래로 갈수록 싸고 가까워요. 진한 점을 이은 선은 <strong>더 싸면서 더 가까운 동네가 없는</strong> 선택지예요.<br />
         선 위의 동네끼리는 돈과 시간을 맞바꾸는 관계입니다.
       </p>
       <div className="chart-box">
@@ -31,37 +41,50 @@ export default function TradeoffChart({ result, selected, onSelect }: Props) {
               label={{ value: '월 총비용 (만 원)', position: 'insideBottom', offset: -16, fill: '#56656D', fontSize: 12 }} />
             <YAxis type="number" dataKey="y" name="통근" domain={[0, 'dataMax + 5']} stroke="#8a969c" fontSize={12}
               label={{ value: '통근 (분)', angle: -90, position: 'insideLeft', fill: '#56656D', fontSize: 12 }} />
-            <Tooltip cursor={{ strokeDasharray: '3 3' }} content={<Tip />} />
-            <Scatter data={rest} fill={MUTED} onClick={(p) => onSelect((p as unknown as Pt).dong_code)}
-              shape={(props: unknown) => <Dot {...(props as DotProps)} selected={selected} />} />
-            <Scatter data={front} fill={INK} line={{ stroke: INK, strokeWidth: 2 }} lineType="joint"
+            <Tooltip
+              cursor={{ strokeDasharray: '3 3' }}
+              content={<Tip />}
+              offset={14}
+              reverseDirection={{ y: true }}
+              allowEscapeViewBox={{ x: true, y: true }}
+            />
+            <Scatter data={rest} onClick={(p) => onSelect((p as unknown as Pt).dong_code)}
+              shape={(props: unknown) => renderDot(props)} />
+            <Scatter data={front} line={{ stroke: LINE, strokeWidth: 2 }} lineType="joint"
               onClick={(p) => onSelect((p as unknown as Pt).dong_code)}
-              shape={(props: unknown) => <Dot {...(props as DotProps)} selected={selected} strong />} />
+              shape={(props: unknown) => renderDot(props, true)} />
           </ScatterChart>
         </ResponsiveContainer>
       </div>
       <p className="chart-foot">
-        숫자는 순위. 속이 빈 점은 실거래가 적어 월 총비용을 추정한 동네예요.
+        숫자는 순위. 속이 빈 점이나 점선 테두리는 월 총비용을 추정한 동네예요.
         {missing > 0 && ` 값이 없는 ${missing}곳은 그리지 않았어요.`}
       </p>
     </div>
   )
 }
 
-type DotProps = { cx: number; cy: number; payload: Pt; selected: string | null; strong?: boolean }
+type DotProps = { cx: number; cy: number; payload: Pt; selected: string | null; color: string; strong?: boolean }
 
-function Dot({ cx, cy, payload, selected, strong }: DotProps) {
+function Dot({ cx, cy, payload, selected, color, strong }: DotProps) {
   const isSel = payload.dong_code === selected
-  const r = isSel ? 8 : strong ? 6 : 5
-  const color = strong ? INK : MUTED
+  const isTop = payload.rank >= 1 && payload.rank <= 3
+  const r = isTop ? 11 : isSel ? 8 : strong ? 6 : 5
+  const outline = isTop ? '#74511a' : LINE
   return (
     <g style={{ cursor: 'pointer' }}>
       <circle cx={cx} cy={cy} r={r + 2} fill="#fff" />
-      <circle cx={cx} cy={cy} r={r} fill={payload.estimated ? '#fff' : color} stroke={color} strokeWidth={2} />
+      <circle cx={cx} cy={cy} r={r} fill={payload.estimated && !isTop ? '#fff' : color} stroke={outline}
+        strokeWidth={isTop || strong || payload.estimated ? 2 : 1} strokeDasharray={isTop && payload.estimated ? '3 2' : undefined} />
       {isSel && <circle cx={cx} cy={cy} r={r + 4} fill="none" stroke={INK} strokeWidth={1.5} />}
-      {(payload.rank <= 3 || isSel) && (
+      {isTop && (
+        <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight={700} fill={INK} pointerEvents="none">
+          {payload.rank}
+        </text>
+      )}
+      {isSel && (
         <text x={cx + r + 4} y={cy - r} fontSize={12} fontWeight={700} fill={INK}>
-          {payload.rank} {payload.name}
+          {payload.name}
         </text>
       )}
     </g>

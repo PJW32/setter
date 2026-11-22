@@ -99,7 +99,7 @@ export default function Chat({ items, busy, disabled, onSend, hasResult }: {
           aria-label="조건 입력"
         />
         <div className="composer-row">
-          <span className="composer-note">이름·연락처 같은 개인정보는 적지 마세요. 입력한 문장은 AI(Gemini)로 보내져요.</span>
+          <span className="composer-note">이름·연락처 같은 개인정보는 적지 마세요.<br />입력한 문장은 AI(Gemini)로 보내져요.</span>
           <button type="submit" className="btn-primary" disabled={busy || disabled || !text.trim()}>보내기</button>
         </div>
       </form>
