@@ -18,6 +18,8 @@ export default function TradeoffChart({ result, selected, onSelect, highlight = 
   const missing = result.scatter.length - pts.length
   const hi = new Set(highlight)
   const hiNames = pts.filter((p) => hi.has(p.dong_code)).map((p) => p.name)
+  // 고른 동네·물어본 동네의 테두리와 이름은 맨 위 층에 따로 그려 다른 점에 가리지 않게 한다
+  const marked = pts.filter((p) => p.dong_code === selected || hi.has(p.dong_code))
   const scores = new Map(result.ranked.map((d) => [d.dong_code, d.score]))
   const low = Math.min(...scores.values())
   const high = Math.max(...scores.values())
@@ -59,6 +61,8 @@ export default function TradeoffChart({ result, selected, onSelect, highlight = 
             <Scatter data={front} line={{ stroke: LINE, strokeWidth: 2 }} lineType="joint"
               onClick={(p) => onSelect((p as unknown as Pt).dong_code)}
               shape={(props: unknown) => renderDot(props, true)} />
+            <Scatter data={marked} isAnimationActive={false} legendType="none" tooltipType="none"
+              shape={(props: unknown) => <Mark {...(props as DotProps)} hi={hi} />} />
           </ScatterChart>
         </ResponsiveContainer>
       </div>
@@ -83,18 +87,27 @@ function Dot({ cx, cy, payload, selected, color, strong, hi }: DotProps) {
       <circle cx={cx} cy={cy} r={r + 2} fill="#fff" />
       <circle cx={cx} cy={cy} r={r} fill={payload.estimated && !isTop ? '#fff' : color} stroke={outline}
         strokeWidth={isTop || strong || payload.estimated ? 2 : 1} strokeDasharray={isTop && payload.estimated ? '3 2' : undefined} />
-      {isHi && <circle cx={cx} cy={cy} r={r + 4} fill="none" stroke={HI} strokeWidth={2.5} />}
-      {isSel && !isHi && <circle cx={cx} cy={cy} r={r + 4} fill="none" stroke={INK} strokeWidth={1.5} />}
       {isTop && (
         <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight={700} fill={INK} pointerEvents="none">
           {payload.rank}
         </text>
       )}
-      {(isSel || isHi) && (
-        <text x={cx + r + 6} y={cy - r} fontSize={12} fontWeight={700} fill={INK}>
-          {payload.name}
-        </text>
-      )}
+    </g>
+  )
+}
+
+/** 맨 위 층: 고른 동네·물어본 동네의 테두리와 이름표 (흰 테두리 글자라 겹쳐도 읽힌다) */
+function Mark({ cx, cy, payload, hi }: Pick<DotProps, 'cx' | 'cy' | 'payload' | 'hi'>) {
+  const isHi = hi.has(payload.dong_code)
+  const isTop = payload.rank >= 1 && payload.rank <= 3
+  const r = isTop ? 11 : 8
+  return (
+    <g pointerEvents="none">
+      <circle cx={cx} cy={cy} r={r + 4} fill="none" stroke={isHi ? HI : INK} strokeWidth={isHi ? 2.5 : 1.5} />
+      <text x={cx + r + 8} y={cy - r - 2} fontSize={12.5} fontWeight={700} fill={INK}
+        stroke="#fff" strokeWidth={4} strokeLinejoin="round" paintOrder="stroke">
+        {payload.name}
+      </text>
     </g>
   )
 }

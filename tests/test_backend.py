@@ -351,6 +351,21 @@ class IntentRoutingTest(unittest.TestCase):
         self.assertFalse(fake.facts[-1]["첫_결과"])
 
 
+class GroupThousandsTest(unittest.TestCase):
+    """답변 글의 큰 숫자 쉼표 (표 표기와 맞춤)."""
+
+    def test_money_and_counts_get_commas(self):
+        g = presenter.group_thousands
+        self.assertEqual(g("보증금 중앙값 1000만 원"), "보증금 중앙값 1,000만 원")
+        self.assertEqual(g("보증금 12000만원, 반경 1500m, 거래 1234건"), "보증금 12,000만원, 반경 1,500m, 거래 1,234건")
+        self.assertEqual(g("월 교통비 1350.5만 원"), "월 교통비 1,350.5만 원")
+
+    def test_years_periods_and_small_numbers_untouched(self):
+        g = presenter.group_thousands
+        for text in ("2026년 기준", "202511~202610 거래", "월세 500만 원", "1,000만 원", "통근 15분", "3.1415만 원"):
+            self.assertEqual(g(text), text)
+
+
 class GuidesAndUnitsTest(unittest.TestCase):
     """확인 방법 범위, 숫자 단위, 화면 연동."""
 

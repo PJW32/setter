@@ -26,6 +26,15 @@ def by_unit(v, unit: str):
     return _i(v) if unit in INT_UNITS else _r(v)
 
 
+# 금액·개수 앞의 네 자리 이상 숫자. 연도(2026년)·기간(202511~202610)은 단위가 달라 건드리지 않는다
+_BIG_NUMBER = re.compile(r"(?<![\d.,])(\d{4,})(?=(?:\.\d+)?\s*(?:만\s?원|원|건|곳|개|명|세대|m(?![a-zA-Z])))")
+
+
+def group_thousands(text: str) -> str:
+    """답변 글의 큰 숫자에 천 단위 쉼표: 1000만 원 → 1,000만 원. 표와 같은 표기로 맞춘다."""
+    return _BIG_NUMBER.sub(lambda m: f"{int(m.group(1)):,}", text)
+
+
 # ------------------------------------------------------------------ 화면용
 def dong_card(e: dict) -> dict:
     d = e["detail"]
