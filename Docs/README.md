@@ -8,6 +8,7 @@
 | [feature-spec.md](feature-spec.md) | 기능 명세서: 화면 구성, 기능 목록(F-01~18), 기능별 수용 기준, 비기능 요구사항 |
 | [api-spec.md](api-spec.md) | API 명세서: 엔드포인트, 요청·응답, 이벤트 스트림 형식, 타입 정의 |
 | [erd.md](erd.md) | ERD: SQLite 테이블, JSON 필드, 세션 메모리 모델 |
+| [response-format.md](response-format.md) | 에이전트 응답 형식: 응답 종류별 길이·구조·예시, 숫자 표기, 숫자 검사, 함께 보내는 자료와 화면 연동, 모르는 정보 대응, 고칠 곳 |
 | [engine.md](engine.md) | 추천 모델(점수 엔진): 요인, 가중치 단계, 필수 조건, 정규화, 데이터 부족 처리, 순위 변동 분해, 대화 상태 |
 | [data.md](data.md) | 데이터: 출처, 수집 방식(실시간 지역 수집), 저장 형태, 한도, 한계 |
 | [data-prewarm.md](data-prewarm.md) | 사전 수집 명령, 로컬 저장 상태, 결과 보고서, 부분 실패와 배포 시 데이터 유지 |
