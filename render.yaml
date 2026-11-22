@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: saeteo-preview
+    name: setter
     runtime: python
     plan: free
     branch: master
