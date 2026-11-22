@@ -54,6 +54,13 @@ class Agent:
 
     # ------------------------------------------------------------------ 한 턴
     def handle(self, s: Session, text: str):
+        try:
+            yield from self._handle(s, text)
+        except Exception:  # 외부 조회·계산 예외도 SSE 완료 이벤트로 종료한다.
+            yield _ev("error", detail="요청 처리 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요.")
+            yield _ev("done")
+
+    def _handle(self, s: Session, text: str):
         s.messages.append({"role": "user", "text": text})
 
         # 1. 조건 해석
@@ -111,7 +118,8 @@ class Agent:
             return
 
         # 4. 후보 지역 데이터 (없으면 수집, 진행 로그를 실시간으로)
-        if s.ds_key != dest.key or s.dataset is None:
+        same_destination = s.dest is not None and s.dest.to_dict() == dest.to_dict()
+        if s.ds_key != dest.key or s.dataset is None or not same_destination:
             ds = None
             for item in self._run_with_logs(lambda log: self.data.dataset_for(dest, log)):
                 if isinstance(item, dict):
@@ -127,11 +135,15 @@ class Agent:
             yield _log("dataset", "done", f"후보 동 {len(ds.dongs)}곳 (이번 대화에서 이미 불러옴)")
 
         # 5. 점수
+        if not ds.dongs:
+            yield _ev("error", detail="추천에 사용할 동네 데이터가 없어요. 목적지를 바꾸거나 잠시 후 다시 시도해 주세요.")
+            yield _ev("done")
+            return
         t0 = time.time()
         res = evaluate(ds, new_state)
         yield _log("score", "done", f"필수 조건 → 정규화 → 가중합: 후보 {res.universe_size}곳 중 통과 {len(res.ranked)}곳",
                    ms=int((time.time() - t0) * 1000))
-        prev = s.result if (s.result is not None and s.ds_key == dest.key) else None
+        prev = s.result if (s.result is not None and same_destination) else None
         diff = compare(prev, res) if prev else None
         trade = presenter.tradeoffs(res)
         if trade:
@@ -157,8 +169,6 @@ class Agent:
         # 7. 확정 (가정 질문이면 상태를 바꾸지 않는다)
         if not what_if:
             s.state, s.dest, s.result, s.dataset, s.ds_key = new_state, dest, res, ds, dest.key
-        else:
-            s.dataset, s.ds_key = ds, dest.key
         yield from self._say(s, text_out, source, follow_up=bool(follow_up))
         yield _ev("done")
 

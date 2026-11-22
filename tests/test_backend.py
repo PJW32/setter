@@ -6,6 +6,7 @@
 import json
 import sys
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -14,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from backend import llm, presenter  # noqa: E402
 from backend.agent import Agent  # noqa: E402
 from backend.regions import Destination  # noqa: E402
+from engine.data import Dataset  # noqa: E402
 from test_engine import DEST, make_dataset  # noqa: E402
 
 BASE = dict(llm.EMPTY_CHANGES)
@@ -146,6 +148,82 @@ class AgentTest(unittest.TestCase):
         s = agent.new_session()
         evs = run(agent, s, "없는곳으로 출근")
         self.assertIn("찾지 못했어요", next(e for e in evs if e["type"] == "message")["text"])
+
+
+class DestinationStateTest(unittest.TestCase):
+    def test_same_station_new_place_rebuilds_dataset(self):
+        class SameStationData(FakeData):
+            def resolve_destination(self, q):
+                d = super().resolve_destination(q)
+                d.label = q
+                d.walk_from_station_min = 15 if q == "회사" else 0
+                return d
+
+            def dataset_for(self, dest, log):
+                ds = super().dataset_for(dest, log)
+                for d in ds.dongs:
+                    c = d["commute"][DEST]
+                    if "min" in c:
+                        c["min"] += dest.walk_from_station_min
+                return ds
+
+        data = SameStationData()
+        agent = Agent(data, FakeLLM([
+            {"intent": "update", "destination": "역"},
+            {"intent": "update", "destination": "회사"},
+        ]))
+        s = agent.new_session()
+        run(agent, s, "역으로 출근")
+        before = s.result.by_code()["9900000001"]["raw"]["commute"]
+        evs = run(agent, s, "회사로 변경")
+        self.assertEqual(s.result.by_code()["9900000001"]["raw"]["commute"], before + 15)
+        self.assertEqual(data.calls, 2)
+        self.assertEqual(s.dataset.meta["destination"]["label"], "회사")
+        self.assertIsNone(next(e for e in evs if e["type"] == "result")["payload"]["diff"])
+
+    def test_other_destination_what_if_keeps_committed_dataset(self):
+        class OtherDestinationData(FakeData):
+            def resolve_destination(self, q):
+                d = super().resolve_destination(q)
+                d.key = q
+                return d
+
+            def dataset_for(self, dest, log):
+                ds = super().dataset_for(dest, log)
+                for d in ds.dongs:
+                    d["commute"] = {dest.key: d["commute"][DEST]}
+                return ds
+
+        agent = Agent(OtherDestinationData(), FakeLLM([
+            {"intent": "update", "destination": "A"},
+            {"intent": "what_if", "destination": "B"},
+        ]))
+        s = agent.new_session()
+        run(agent, s, "A로 출근")
+        dataset, result, snapshot = s.dataset, s.result, s.state.snapshot()
+        run(agent, s, "B로 출근하면?")
+        self.assertIs(s.dataset, dataset)
+        self.assertIs(s.result, result)
+        self.assertEqual(s.ds_key, "A")
+        self.assertEqual(s.state.snapshot(), snapshot)
+        self.assertEqual(agent.what_if(s, {"set_constraints": {"max_commute_min": 30}})["payload"]["destination"]["key"], "A")
+
+    def test_empty_dataset_completes_without_changing_state(self):
+        agent = Agent(FakeData(), FakeLLM([{"intent": "update", "destination": DEST}]))
+        s = agent.new_session()
+        snapshot = s.state.snapshot()
+        with patch.object(agent.data, "dataset_for", return_value=Dataset([], {})):
+            evs = run(agent, s, "추천")
+        self.assertEqual(types(evs)[-2:], ["error", "done"])
+        self.assertNotIn("result", types(evs))
+        self.assertEqual(s.state.snapshot(), snapshot)
+
+    def test_destination_api_error_completes_stream(self):
+        agent = Agent(FakeData(), FakeLLM([{"intent": "update", "destination": DEST}]))
+        with patch.object(agent.data, "resolve_destination", side_effect=RuntimeError("private provider detail")):
+            evs = run(agent, agent.new_session(), "추천")
+        self.assertEqual(types(evs)[-2:], ["error", "done"])
+        self.assertNotIn("private provider detail", evs[-2]["detail"])
 
 
 class ApiTest(unittest.TestCase):
