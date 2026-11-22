@@ -8,8 +8,8 @@ export default function StationSign({ state, busy, onReset }: { state: StateSnap
   return (
     <header className="sign">
       <div className="brand">
-        <span className="brand-mark" aria-hidden="true" />
-        <span className="brand-name">첫동네</span>
+        <img className="brand-mark" src="/setter-icon-192.png" width="42" height="42" alt="" />
+        <span className="brand-name">새터 <span lang="en">setter</span></span>
       </div>
 
       <div className="sign-plate" aria-label="목적지">

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { FACTORS, fmt, rawText, violationText, won } from '../lib/format'
+import { FACTORS, fmt, rawText, violationText } from '../lib/format'
 import type { DongCard, ResultPayload } from '../lib/types'
 
 type Props = { result: ResultPayload; selected: string | null; onSelect: (c: string) => void }
@@ -21,16 +21,17 @@ export default function RankingTable({ result, selected, onSelect }: Props) {
         ))}
       </div>
 
+      <div className="rank-table-scroll" role="region" aria-label="동네 순위표" tabIndex={0}>
       <table className="rank-table">
-        <caption className="sr-only">조건을 만족한 동네 순위. 점수는 요인별 점수의 합입니다.</caption>
+        <caption className="sr-only">동네 순위와 다섯 가지 비교 기준</caption>
         <thead>
           <tr>
             <th scope="col">순위</th>
             <th scope="col">동네</th>
             <th scope="col" className="col-score">점수와 구성</th>
-            <th scope="col" className="num">월 총비용</th>
-            <th scope="col" className="num">통근</th>
-            <th scope="col" className="num">역까지</th>
+            {FACTORS.map((f) => (
+              <th key={f.key} scope="col" className="num">{f.key === 'quiet' ? '주점 수' : f.label}</th>
+            ))}
             <th scope="col">참고</th>
           </tr>
         </thead>
@@ -42,14 +43,15 @@ export default function RankingTable({ result, selected, onSelect }: Props) {
               <td className="num rank-no">{d.rank}</td>
               <td><span className="dong-name">{d.name}</span><span className="dong-sgg">{d.sgg}</span></td>
               <td><ScoreBar d={d} /></td>
-              <td className="num">{d.raw.monthly_cost == null ? '–' : won(d.raw.monthly_cost)}</td>
-              <td className="num">{fmt(d.raw.commute, 0)}분</td>
-              <td className="num">{rawText('station_access', d.raw.station_access).replace('도보 ', '')}</td>
+              {FACTORS.map((f) => (
+                <td key={f.key} className="num">{rawText(f.key, d.raw[f.key])}</td>
+              ))}
               <td><Flags d={d} /></td>
             </tr>
           ))}
         </tbody>
       </table>
+      </div>
       {result.ranked.length > 15 && (
         <button className="link-btn" onClick={() => setShowAll((v) => !v)}>
           {showAll ? '상위 15곳만 보기' : `나머지 ${result.ranked.length - 15}곳 더 보기`}

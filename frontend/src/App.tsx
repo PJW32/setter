@@ -9,6 +9,7 @@ import RankingTable from './components/RankingTable'
 import StationSign from './components/StationSign'
 import TradeoffChart from './components/TradeoffChart'
 import { createSession, restoreSession, sendMessage } from './lib/api'
+import { FACTORS, rawText } from './lib/format'
 import type { AgentEvent, LogEvent, ResultPayload, StateSnapshot } from './lib/types'
 
 type Tab = 'map' | 'table' | 'tradeoff' | 'compare'
@@ -30,6 +31,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('map')
   const [selected, setSelected] = useState<string | null>(null)
+  const [mobileView, setMobileView] = useState<'chat' | 'results'>('chat')
   const idRef = useRef(0)
 
   const load = useCallback(async (fresh: boolean) => {
@@ -41,6 +43,7 @@ export default function App() {
       setHypo(null)
       setLogs([])
       setSelected(null)
+      setMobileView(s.result ? 'results' : 'chat')
       setItems(s.messages.map((m) => ({ id: ++idRef.current, kind: m.role, text: m.text, source: m.source })))
       setError(null)
     } catch (e) {
@@ -60,6 +63,7 @@ export default function App() {
         if (!ev.what_if) setState(ev.state)
         break
       case 'result':
+        setMobileView('results')
         if (ev.what_if) {
           setHypo(ev.payload)
         } else {
@@ -91,10 +95,17 @@ export default function App() {
   }, [sessionId, busy, onEvent])
 
   const shown = hypo ?? result
+  const candidates = shown ? [...shown.ranked, ...shown.excluded] : []
+  const activeCandidate = candidates.find((d) => d.dong_code === selected) ?? shown?.ranked[0]
 
   return (
-    <div className="app">
+    <div className="app" data-mobile-view={error ? 'results' : mobileView}>
       <StationSign state={state} busy={busy} onReset={() => load(true)} />
+
+      {!error && <div className="mobile-navigation" role="group" aria-label="화면 선택">
+        <button type="button" aria-pressed={mobileView === 'chat'} onClick={() => setMobileView('chat')}>조건 입력</button>
+        <button type="button" aria-pressed={mobileView === 'results'} onClick={() => setMobileView('results')}>결과 보기</button>
+      </div>}
 
       <aside className="chat-col" aria-label="대화">
         <Chat items={items} busy={busy} onSend={send} disabled={!sessionId} />
@@ -116,31 +127,59 @@ export default function App() {
         ))}
         {shown?.notes.map((n) => <p key={n} className="banner banner-warn">{n}</p>)}
 
-        <nav className="tabs" role="tablist" aria-label="결과 보기">
+        {shown && <nav className="tabs" role="tablist" aria-label="결과 보기">
           {TABS.map((t) => (
             <button key={t.key} role="tab" aria-selected={tab === t.key}
               className={tab === t.key ? 'tab is-active' : 'tab'} onClick={() => setTab(t.key)}>
               {t.label}
             </button>
           ))}
-          {shown && (
-            <span className="tabs-meta">
-              후보 {shown.universe_size}곳 중 조건을 만족한 {shown.ranked.length}곳
-            </span>
-          )}
-        </nav>
+          <span className="tabs-meta">
+            후보 {shown.universe_size}곳 · 비교 {shown.ranked.length}곳
+          </span>
+        </nav>}
 
         <section className="stage">
+          {shown && !shown.ranked.length && (
+            <div className="mascot-status">
+              <img src="/setter-mascot-thinking.png" width="48" height="54" alt="" />
+              <p>추천 후보가 없어요. 예산이나 통근 조건을 조정해 보세요.</p>
+            </div>
+          )}
           {!shown ? (
             <div className="empty">
-              <p className="empty-title">출근할 곳과 예산을 말하면, 여기에 동네 순위가 나와요.</p>
-              <p className="empty-body">
-                매물이 아니라 동네를 비교합니다. 월세 실거래가, 대중교통 시간, 역까지 거리, 편의시설, 주변 주점 수를
-                숫자로 보여주고, 왜 그 순서인지 설명해요.
-              </p>
+              <img className="empty-mascot" src="/setter-mascot.png" width="384" height="434" alt="" />
+              <h1 className="empty-title">출근지와 예산에 맞는 동네 찾기</h1>
+              <ul className="empty-factors" aria-label="비교 기준">
+                {FACTORS.map((factor) => <li key={factor.key}>{factor.label}</li>)}
+              </ul>
             </div>
           ) : tab === 'map' ? (
-            <MapView result={shown} selected={selected} onSelect={setSelected} />
+            <>
+              <MapView result={shown} selected={selected} onSelect={setSelected} />
+              {activeCandidate && (
+                <section className="candidate-summary" aria-label="지도 후보 요약">
+                  <header>
+                    <div className="candidate-heading">
+                      <img src="/setter-mascot-guide.png" width="40" height="45" alt="" />
+                      <h2>{activeCandidate.name} <small>{activeCandidate.sgg}</small></h2>
+                    </div>
+                    <button type="button" className="link-btn" onClick={() => {
+                      setSelected(activeCandidate.dong_code)
+                      setTab('compare')
+                    }}>비교에서 보기</button>
+                  </header>
+                  <dl>
+                    {FACTORS.map((f) => (
+                      <div key={f.key}>
+                        <dt>{f.key === 'quiet' ? '주변 주점' : f.label}</dt>
+                        <dd>{rawText(f.key, activeCandidate.raw[f.key])}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
+              )}
+            </>
           ) : tab === 'table' ? (
             <RankingTable result={shown} selected={selected} onSelect={setSelected} />
           ) : tab === 'tradeoff' ? (
