@@ -78,6 +78,28 @@ class CollectionScheduleTest(unittest.TestCase):
         self.assertEqual(set(profile.call_args.kwargs),
                          {"timings_ms", "candidate_regions", "cached_regions", "ready_regions", "candidate_dongs", "deals"})
 
+    def test_long_tasks_start_first_but_dataset_candidate_order_is_unchanged(self):
+        from concurrent.futures import Future
+        candidates = {code: {"sido": "가상도", "name": code, "seed": (127, 37)}
+                      for code in ("11650", "41461", "41135", "41610")}
+        queued = []
+
+        def submit(fn, code, *args):
+            queued.append(code)
+            future = Future()
+            future.set_result({"status": "done"})
+            return future
+
+        with patch.object(regions, "candidate_sggs", return_value=candidates), \
+                patch.object(regions.store, "sgg_status", side_effect=[None] * 4 + [{"status": "done"}] * 4), \
+                patch.object(regions.DISTRICT_POOL, "submit", side_effect=submit), \
+                patch.object(regions, "build_dataset", return_value=Dataset([], {})) as build:
+            self.service.dataset_for(self.dest)
+        self.assertEqual(queued, ["41461", "41610", "11650", "41135"])
+        self.assertCountEqual(queued, candidates)
+        # Completed store lookups, not queue order, determine final candidates.
+        self.assertEqual(build.call_args.args[1], list(candidates))
+
     def test_unexpected_failure_drains_other_work_before_returning(self):
         completed = []
 
