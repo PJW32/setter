@@ -15,6 +15,12 @@ from engine.score import Constraints
 from engine.state import State, evaluate
 
 
+def changed_positions(before, after):
+    old = {row["dong_code"]: i for i, row in enumerate(before)}
+    new = {row["dong_code"]: i for i, row in enumerate(after)}
+    return sum(old.get(code) != new.get(code) for code in old.keys() | new.keys())
+
+
 def audit(local_path, national_path, store_path):
     local, national = PublicPlaces(local_path), PublicPlaces(national_path)
     if not national.manifest.get("all_regions") or local.manifest["as_of"] != national.manifest["as_of"]:
@@ -60,17 +66,18 @@ def audit(local_path, national_path, store_path):
                 d["commute"] = {"판교역": commutes[d["dong_code"]]}
                 selected.append(d)
         return Dataset(selected, deals)
-    datasets = {"stored": dataset(dongs), **{k: dataset(v) for k, v in replacements.items()}}
+    covered = {d["dong_code"] for d in replacements["local"]}
+    datasets = {"stored": dataset([d for d in dongs if d["dong_code"] in covered]),
+                **{k: dataset(v) for k, v in replacements.items()}}
     scenarios = []
     for rent, priority in [(60, None), (50, None), (60, "station_access"), (60, "quiet"), (60, "convenience")]:
         state = State(constraints=Constraints(max_deposit=1000, max_monthly_rent=rent, max_commute_min=50))
         if priority:
             state.levels[priority] = "매우 중요"
         ranked = {k: evaluate(ds, state).ranked for k, ds in datasets.items()}
-        original = [r["dong_code"] for r in ranked["stored"]]
         scenarios.append({"rent": rent, "priority": priority,
                           "top3": {k: [r["dong_code"] for r in rows[:3]] for k, rows in ranked.items()},
-                          "changed_positions": {k: sum(a != b for a, b in zip(original, [r['dong_code'] for r in rows]))
+                          "changed_positions": {k: changed_positions(ranked["stored"], rows)
                                                 for k, rows in ranked.items() if k != "stored"},
                           "ranked_counts": {k: len(rows) for k, rows in ranked.items()}})
     differences.sort(key=lambda r: abs(r["national"] - r["stored"]), reverse=True)
@@ -89,6 +96,8 @@ if __name__ == "__main__":
     parser.add_argument("--store", type=Path, default=ROOT / "data/store.sqlite")
     parser.add_argument("--output", type=Path, default=ROOT / "data/raw/public-places-audit.json")
     args = parser.parse_args()
+    if args.output.resolve() in {p.resolve() for p in (args.local, args.national, args.store)}:
+        parser.error("보고서 출력 경로는 입력 DB와 달라야 합니다")
     result = audit(args.local, args.national, args.store)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")
