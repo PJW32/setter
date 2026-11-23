@@ -25,7 +25,7 @@ class SecuritySettings:
     api_per_minute: int = 120
     jobs_per_minute: int = 12
     jobs_per_day: int = 100
-    max_jobs: int = 2
+    max_jobs: int = 5
     require_login: bool = True
 
     @classmethod
