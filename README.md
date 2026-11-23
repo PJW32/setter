@@ -14,6 +14,7 @@
 | 프로토타입 (MVP) | https://saeteo-preview.onrender.com/ |
 | 시연 영상 (3분 이내) | [GitHub Release `demo-v1`](https://github.com/PJW32/setter/releases/tag/demo-v1) (`setter.mp4`) |
 | 프로젝트 소개서 (PDF) | [docs/[터전연구소]_새터_AI 해커톤_261123.pdf](docs/%5B%ED%84%B0%EC%A0%84%EC%97%B0%EA%B5%AC%EC%86%8C%5D_%EC%83%88%ED%84%B0_AI%20%ED%95%B4%EC%BB%A4%ED%86%A4_261123.pdf) |
+| 소스코드 | https://github.com/PJW32/setter |
 | 개발 문서 | [docs/README.md](docs/README.md) |
 
 ### 심사위원 접속 안내
@@ -117,7 +118,7 @@ AI가 만든 코드는 팀원이 실행·테스트하고 Pull Request 리뷰를 
 | 확인할 수 없는 조건을 지어냄 | '확인 불가'로 분리하고 코드에 정의한 확인 방법·링크 안내 (정의되지 않은 주제는 카카오맵 검색 링크) |
 | 해석이 사용자 의도와 다름 | 해석 카드에 근거 원문 표시, 목적지 후보 제시, 가정 질문은 실제 조건을 바꾸지 않음 |
 
-**검증 결과**: 단위·회귀 테스트 129개 통과(가상 데이터, 네트워크 없음), 조건 추출·의도 분류 발화 24개 세트 24/24 통과(2026-11-22, 1회 실행), 판교 시나리오 실제 API 점검. 상세: [docs/backend.md](docs/backend.md), [docs/mvp-test-scenarios.md](docs/mvp-test-scenarios.md)
+**검증 결과**: 단위·회귀 테스트 133개 통과(가상 데이터, 네트워크 없음), 조건 추출·의도 분류 발화 24개 세트 24/24 통과(2026-11-22, 1회 실행), 판교 시나리오 실제 API 점검. 상세: [docs/backend.md](docs/backend.md), [docs/mvp-test-scenarios.md](docs/mvp-test-scenarios.md)
 
 ## 기술 스택
 
@@ -203,7 +204,7 @@ npm --prefix frontend run lint
 
 - **개발 기간**: 2026-11-20 ~ 2026-11-23. 이 저장소의 첫 커밋은 2026-11-20이며, 모든 코드는 대회 접수 기간(2026-11-09 ~ 11-23) 중에 작성했습니다.
 - **사전 개발 내역**: 해커톤 이전 개발물 없음, 타 공모전 출품·수상 이력 없음. 해커톤 기간 중 서비스 기획, 데이터 수집과 추천 엔진, 대화 에이전트, 웹 UI, 배포 설정과 검증을 개발했습니다. (프로젝트 소개서 별첨 「팀 구성 및 사전 개발 내역」과 같은 내용)
-- **제출 기준 버전**: 프로젝트 소개서에 적은 기준 커밋 [`f1f7bfe`](https://github.com/PJW32/setter/tree/f1f7bfe). 시연 영상은 [`demo-v1`](https://github.com/PJW32/setter/releases/tag/demo-v1) 릴리스(커밋 `6faf1e6`)에 있습니다.
+- **제출 기준 버전**: 소스코드 [https://github.com/PJW32/setter](https://github.com/PJW32/setter)의 `master` 커밋 `51770a5` (2026-11-23, PR #23 병합 시점). 그 뒤 커밋은 이 기준 커밋 표기를 고친 README 수정뿐입니다. 시연 영상은 [`demo-v1`](https://github.com/PJW32/setter/releases/tag/demo-v1) 릴리스(커밋 `6faf1e6`)에 있습니다.
 - **제출 후 변경**: 마감 후에는 접속 복구·인증정보 교체·실행 환경 복구만 하며, 기능·알고리즘·프롬프트·데이터는 바꾸지 않습니다. 실행 중 새 목적지의 지역 데이터를 수집·저장하는 것은 제출본에 포함된 기능의 동작입니다.
 
 ## 팀 터전연구소
