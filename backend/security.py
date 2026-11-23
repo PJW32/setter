@@ -26,6 +26,7 @@ class SecuritySettings:
     jobs_per_minute: int = 12
     jobs_per_day: int = 100
     max_jobs: int = 2
+    require_login: bool = True
 
     @classmethod
     def load(cls):
@@ -34,18 +35,22 @@ class SecuritySettings:
         username = os.getenv("DEPLOY_USERNAME", "")
         password = os.getenv("DEPLOY_PASSWORD", "")
         secret = os.getenv("DEPLOY_SESSION_SECRET", "")
-        enabled = production or any((username, password, secret))
+        mode = os.getenv("DEPLOY_ACCESS_MODE", "basic")
+        if mode not in ("basic", "public"):
+            raise RuntimeError("DEPLOY_ACCESS_MODE는 basic 또는 public이어야 합니다")
+        require_login = mode == "basic"
+        enabled = production or not require_login or any((username, password, secret))
         origin = os.getenv("APP_ORIGIN") or os.getenv("RENDER_EXTERNAL_URL", "")
         if enabled:
             parsed = urlsplit(origin)
-            if (not username or ":" in username or len(username) > 64
-                    or len(password) < 20 or len(secret) < 32):
+            if len(secret) < 32 or (require_login and (
+                    not username or ":" in username or len(username) > 64 or len(password) < 20)):
                 raise RuntimeError("배포 인증 설정 필요: DEPLOY_USERNAME, DEPLOY_PASSWORD(20자 이상), DEPLOY_SESSION_SECRET(32자 이상)")
             if (not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment
                     or parsed.path not in ("", "/") or parsed.scheme not in ("http", "https")
                     or (production and parsed.scheme != "https")):
                 raise RuntimeError("APP_ORIGIN 또는 RENDER_EXTERNAL_URL에 서비스의 정확한 HTTPS 주소가 필요합니다")
-        return cls(enabled, production, username, password, secret, origin.rstrip("/"))
+        return cls(enabled, production, username, password, secret, origin.rstrip("/"), require_login=require_login)
 
     @property
     def cookie_name(self):
@@ -169,7 +174,7 @@ class DeploymentGuard:
         if headers.get("host", "").lower() != urlsplit(cfg.origin).netloc.lower():
             await reject(400, "허용되지 않은 호스트입니다")
             return
-        if not self.authenticated(headers.get("authorization", "")):
+        if cfg.require_login and not self.authenticated(headers.get("authorization", "")):
             peer = (scope.get("client") or ("unknown",))[0]
             if not self.limits.allow(("login", peer), 12):
                 await reject(429, "접속 시도가 많습니다. 잠시 후 다시 시도해 주세요", {"Retry-After": "60"})

@@ -1,6 +1,12 @@
 # Render 무료 심사용 배포
 
-팀원·심사위원에게 공유하는 단일 프로세스 MVP를 배포한다. 화면과 API에 HTTP Basic 인증을 적용한다. 개인별 회원 계정이나 완전한 보안 보장을 제공하는 구성은 아니다. AI 프롬프트·추천 계산·프론트 소스는 변경하지 않는다.
+팀원·심사위원에게 공유하는 단일 프로세스 MVP를 배포한다. `DEPLOY_ACCESS_MODE=public`은 로그인 검사만 생략하고 브라우저별 대화 분리·호출 제한을 유지한다. `basic`은 HTTP Basic 인증도 요구한다. 미설정 시 기존 basic 방식이다. 개인별 회원 계정이나 완전한 보안 보장을 제공하는 구성은 아니다. AI 프롬프트·추천 계산·프론트 소스는 변경하지 않는다.
+
+## 기존 서비스 공개 전환
+
+코드 병합과 fork 갱신 후 기존 `setter-teojeon-lab`의 **Environment**에 `DEPLOY_ACCESS_MODE=public`을 직접 추가하고 재배포한다. Blueprint Auto Sync는 꺼져 있으므로 YAML만 바꿔서는 기존 환경에 반영되지 않는다. **Blueprint Manual Sync는 누르지 않는다.** 기존 `DEPLOY_USERNAME`·`DEPLOY_PASSWORD`가 남아 있어도 공개 모드에서는 무시한다. `DEPLOY_SESSION_SECRET`·API 키·origin은 유지한다. 새 시크릿 브라우저에서 로그인 창 없이 접속되는지 확인한다.
+
+공개 모드도 아래 대화·요청·동시 실행·본문 크기·호스트·origin 보호를 유지한다. 아래 Basic 인증과 인증 실패 제한 설명은 basic 모드에만 적용한다. public에서도 서명 비밀값과 정확한 origin 없이는 실행되지 않는다. 누구나 호출 가능하므로 공통 한도 소진과 외부 API 비용 가능성이 있으며 메모리 기반 제한은 재시작 때 초기화되어 과금 상한을 보장하지 않는다. 기존 쿠키 서명 비밀값은 유지하므로 브라우저별 대화 접근은 기존 방식대로 동작한다. 복귀는 아이디·암호를 유지한 상태에서 `DEPLOY_ACCESS_MODE=basic`으로 바꾸고 재배포한다.
 
 ## 1. 비용과 데이터 유지
 
