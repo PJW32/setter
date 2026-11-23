@@ -25,6 +25,21 @@ CONFIG = SecuritySettings(enabled=True, production=True, username="reviewer",
 
 
 class ConfigurationTest(unittest.TestCase):
+    def test_public_mode_keeps_protection_and_requires_signing_secret(self):
+        env = {"APP_ENV": "production", "DEPLOY_ACCESS_MODE": "public",
+               "DEPLOY_SESSION_SECRET": CONFIG.secret, "APP_ORIGIN": ORIGIN}
+        with patch.dict(os.environ, env, clear=True):
+            settings = SecuritySettings.load()
+            self.assertTrue(settings.enabled)
+            self.assertFalse(settings.require_login)
+            self.assertEqual(settings.username, "")
+            with patch.dict(os.environ, {"DEPLOY_SESSION_SECRET": ""}):
+                with self.assertRaises(RuntimeError):
+                    SecuritySettings.load()
+            with patch.dict(os.environ, {"DEPLOY_ACCESS_MODE": "typo"}):
+                with self.assertRaises(RuntimeError):
+                    SecuritySettings.load()
+
     def test_production_requires_strong_credentials_and_https_origin(self):
         with patch.dict(os.environ, {"APP_ENV": "production"}, clear=True):
             with self.assertRaises(RuntimeError):
@@ -68,6 +83,33 @@ class DeploymentSecurityTest(unittest.TestCase):
         response = (client or self.client).post("/api/sessions")
         self.assertEqual(response.status_code, 200)
         return response.json()["session_id"]
+
+    def test_public_access_has_no_login_prompt_and_keeps_browser_isolation(self):
+        guard = DeploymentGuard(main.app, replace(CONFIG, require_login=False, username="", password=""))
+        a = self.client_for(guard, authenticated=False)
+        b = self.client_for(guard, authenticated=False)
+        sid = self.session(a)
+        response = a.get(f"/api/sessions/{sid}")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("www-authenticate", response.headers)
+        self.assertEqual(b.get(f"/api/sessions/{sid}").status_code, 404)
+        self.assertIn(CONFIG.cookie_name, a.cookies)
+        self.assertEqual(a.post("/api/sessions", headers={"Origin": "https://other.example"}).status_code, 403)
+        self.assertEqual(a.get("/data/store.sqlite").status_code, 404)
+        self.assertEqual(a.get("/docs").status_code, 404)
+        self.assertEqual(a.get("/api/meta").headers["cache-control"], "no-store")
+
+    def test_public_access_keeps_body_job_limits_and_static_access(self):
+        guard = DeploymentGuard(main.app, replace(CONFIG, require_login=False, jobs_per_day=1))
+        client = self.client_for(guard, authenticated=False)
+        sid = self.session(client)
+        self.assertEqual(client.post(f"/api/sessions/{sid}/messages", content="x" * 17000).status_code, 413)
+        self.assertEqual(client.post(f"/api/sessions/{sid}/what-if", json={"changes": {}}).status_code, 400)
+        self.assertEqual(client.post(f"/api/sessions/{sid}/what-if", json={"changes": {}}).status_code, 429)
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "index.html").write_text("<h1>Public</h1>", encoding="utf-8")
+            static_guard = DeploymentGuard(StaticFiles(directory=tmp, html=True), replace(CONFIG, require_login=False))
+            self.assertEqual(self.client_for(static_guard, False).get("/").status_code, 200)
 
     def test_public_health_is_minimal_but_screen_api_and_docs_require_auth(self):
         guest = self.client_for(self.guard, authenticated=False)

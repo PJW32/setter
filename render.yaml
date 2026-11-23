@@ -12,14 +12,12 @@ services:
     envVars:
       - key: APP_ENV
         value: production
+      - key: DEPLOY_ACCESS_MODE
+        value: public
       - key: PYTHON_VERSION
         value: 3.12.10
       - key: NODE_VERSION
         value: "24"
-      - key: DEPLOY_USERNAME
-        sync: false
-      - key: DEPLOY_PASSWORD
-        sync: false
       - key: DEPLOY_SESSION_SECRET
         generateValue: true
       - key: GEMINI_API_KEY

@@ -3,7 +3,7 @@
 - 서버: FastAPI (`backend/main.py`), 기본 `http://localhost:8000`
 - 모든 경로는 `/api` 로 시작한다. 빌드된 프론트(`frontend/dist`)는 같은 서버의 `/` 에서 제공한다
 - 요청·응답 본문은 JSON (UTF-8). 메시지 전송만 **이벤트 스트림**(`text/event-stream`)으로 응답한다
-- 기본 로컬 개발은 인증 없이 사용한다. 배포 보호가 활성화되면 화면과 API에 공통 HTTP Basic 인증을 적용하고, 서명된 브라우저 쿠키로 대화 소유자를 구분한다. 외부 API 키는 서버만 갖는다. 설정은 [render-deploy.md](render-deploy.md)를 따른다.
+- 기본 로컬 개발은 인증 없이 사용한다. 배포 보호는 `DEPLOY_ACCESS_MODE=basic`(기본값)이면 HTTP Basic 인증을, `public`이면 로그인 없이 접속을 제공한다. 두 모드 모두 서명된 브라우저 쿠키로 대화 소유자를 구분하고 요청·동시 실행 제한을 유지한다. 외부 API 키는 서버만 갖는다. 설정은 [render-deploy.md](render-deploy.md)를 따른다.
 - 금액 단위는 **만원**, 시간은 **분**, 요금(`fare`)만 **원**
 - 개발 중 CORS 허용: `http://localhost:5173`, `http://127.0.0.1:5173`
 
