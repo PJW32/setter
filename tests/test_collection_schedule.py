@@ -61,7 +61,8 @@ class CollectionScheduleTest(unittest.TestCase):
         with patch.object(regions, "candidate_sggs", return_value=self.candidates), \
                 patch.object(regions.store, "sgg_status", return_value={"status": "done"}), \
                 patch.object(regions, "ensure_sgg") as collect, \
-                patch.object(regions, "build_dataset", return_value=Dataset([], {})) as build:
+                patch.object(regions, "build_dataset", return_value=Dataset([], {})) as build, \
+                patch.object(regions, "_profile") as profile:
             self.service.dataset_for(self.dest, lambda *a, **kw: logs.append((a, kw)))
         collect.assert_not_called()
         self.assertEqual(build.call_args.args[1], list(self.candidates))
@@ -72,6 +73,10 @@ class CollectionScheduleTest(unittest.TestCase):
         self.assertIn(f"전체 경과 {collect_log[1]['ms'] / 1000:.1f}초", collect_log[0][2])
         dataset_log = next((args, kw) for args, kw in logs if args[:2] == ("dataset", "done"))
         self.assertIn(f"전체 경과 {dataset_log[1]['total_ms'] / 1000:.1f}초", dataset_log[0][2])
+        self.assertEqual(profile.call_args.args, ("dataset",))
+        self.assertEqual(profile.call_args.kwargs["cached_regions"], len(self.candidates))
+        self.assertEqual(set(profile.call_args.kwargs),
+                         {"timings_ms", "candidate_regions", "cached_regions", "ready_regions", "candidate_dongs", "deals"})
 
     def test_unexpected_failure_drains_other_work_before_returning(self):
         completed = []
