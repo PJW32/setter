@@ -227,6 +227,37 @@ class DeploymentSecurityTest(unittest.TestCase):
         self.assertTrue(guard.jobs.acquire(blocking=False))
         guard.jobs.release()
 
+    def test_five_recommendations_run_and_sixth_is_rejected_until_slot_frees(self):
+        guard = DeploymentGuard(main.app, CONFIG)
+        clients = [self.client_for(guard) for _ in range(6)]
+        ids = [self.session(client) for client in clients]
+        ready, release = threading.Event(), threading.Event()
+        lock = threading.Lock()
+        active = 0
+
+        def handle(*args):
+            nonlocal active
+            with lock:
+                active += 1
+                if active == 5:
+                    ready.set()
+            if not release.wait(8):
+                raise RuntimeError("test timeout")
+            yield {"type": "done"}
+
+        def send(i):
+            return clients[i].post(f"/api/sessions/{ids[i]}/messages", json={"text": "검색"})
+
+        with patch.object(main.agent, "handle", side_effect=handle), ThreadPoolExecutor(max_workers=5) as pool:
+            running = [pool.submit(send, i) for i in range(5)]
+            try:
+                self.assertTrue(ready.wait(5), "five requests did not start")
+                self.assertEqual(send(5).status_code, 503)
+            finally:
+                release.set()
+            self.assertTrue(all(f.result(timeout=5).status_code == 200 for f in running))
+            self.assertEqual(send(5).status_code, 200)
+
     def test_expired_sessions_and_per_browser_capacity_are_bounded(self):
         first = self.session()
         for _ in range(3):
