@@ -12,7 +12,8 @@
 | 구분 | 링크 |
 |---|---|
 | 프로토타입 (MVP) | https://saeteo-preview.onrender.com/ |
-| 프로젝트 소개서 | 대회 과제 제출 링크로 제출 (PDF) |
+| 시연 영상 (3분 이내) | [GitHub Release `demo-v1`](https://github.com/PJW32/setter/releases/tag/demo-v1) (`setter.mp4`) |
+| 프로젝트 소개서 (PDF) | [docs/[터전연구소]_새터_AI 해커톤_261123.pdf](docs/%5B%ED%84%B0%EC%A0%84%EC%97%B0%EA%B5%AC%EC%86%8C%5D_%EC%83%88%ED%84%B0_AI%20%ED%95%B4%EC%BB%A4%ED%86%A4_261123.pdf) |
 | 개발 문서 | [docs/README.md](docs/README.md) |
 
 ### 심사위원 접속 안내
@@ -103,7 +104,7 @@
 | 서비스 | Google Gemini `gemini-3.8-flash` (Vertex AI) | 발화 → 조건 변경분 추출(temperature 0.2), 대화 의도 분류, 결과·순위 변동 설명(temperature 0.3) |
 | 개발 | OpenAI Codex | 자료 조사·기획 정리, 프론트엔드·백엔드 코드 |
 | 개발 | Claude Code | 추천 모델(조건 추출·점수 엔진·설명 검증) 코드, 테스트·기술 문서 |
-| 디자인 | OpenAI GPT 이미지 모델 | 마스코트 이미지 생성 (LLM으로 프롬프트 작성 후 입력) |
+| 디자인 | OpenAI GPT 이미지 모델 | 마스코트·앱 아이콘 이미지 생성 (LLM으로 프롬프트 작성 후 입력) |
 
 AI가 만든 코드는 팀원이 실행·테스트하고 Pull Request 리뷰를 거쳐 병합했습니다. 문제 정의, 서비스 구조, 추천 요인·가중치·산식, 프롬프트·스키마, 데이터 정제 규칙, 화면 설계는 팀이 정했습니다.
 
@@ -201,8 +202,8 @@ npm --prefix frontend run lint
 ## 대회 제출 정보
 
 - **개발 기간**: 2026-11-20 ~ 2026-11-23. 이 저장소의 첫 커밋은 2026-11-20이며, 모든 코드는 대회 접수 기간(2026-11-09 ~ 11-23) 중에 작성했습니다.
-- **사전 개발 내역**: 저장소 이력상 2026-11-20 개발 시작. 해커톤 기간 중 서비스 기획, 수집·추천 엔진, 대화 에이전트, 웹 UI, 배포 설정과 검증을 개발했습니다. (프로젝트 소개서 별첨 「팀 구성 및 사전 개발 내역」과 같은 내용)
-- **제출 기준 버전**: 제출 마감(2026-11-23 17:00) 시점의 `master` 커밋을 제출본으로 하며, 태그 `submission-2026-11-23`으로 기록합니다.
+- **사전 개발 내역**: 해커톤 이전 개발물 없음, 타 공모전 출품·수상 이력 없음. 해커톤 기간 중 서비스 기획, 데이터 수집과 추천 엔진, 대화 에이전트, 웹 UI, 배포 설정과 검증을 개발했습니다. (프로젝트 소개서 별첨 「팀 구성 및 사전 개발 내역」과 같은 내용)
+- **제출 기준 버전**: 프로젝트 소개서에 적은 기준 커밋 [`f1f7bfe`](https://github.com/PJW32/setter/tree/f1f7bfe). 시연 영상은 [`demo-v1`](https://github.com/PJW32/setter/releases/tag/demo-v1) 릴리스(커밋 `6faf1e6`)에 있습니다.
 - **제출 후 변경**: 마감 후에는 접속 복구·인증정보 교체·실행 환경 복구만 하며, 기능·알고리즘·프롬프트·데이터는 바꾸지 않습니다. 실행 중 새 목적지의 지역 데이터를 수집·저장하는 것은 제출본에 포함된 기능의 동작입니다.
 
 ## 팀 터전연구소
@@ -245,12 +246,13 @@ npm --prefix frontend run lint
 | [React-Leaflet](https://github.com/PaulLeCam/react-leaflet) (@react-leaflet/core 포함) | Hippocratic-2.1 | 지도 React 연동 |
 | [Recharts](https://github.com/recharts/recharts) | MIT | 산점도·차트 |
 | [IBM Plex Sans KR](https://github.com/IBM/plex) (@fontsource) | SIL OFL 1.1 | 웹 폰트 |
+| [프리젠테이션](https://freesentation.blog/freesentation) (이주임) | SIL OFL 1.1 | 프로젝트 소개서 폰트 |
 
 설치 패키지의 저작권·라이선스 원문은 [frontend/public/third-party-notices.txt](frontend/public/third-party-notices.txt)에 모았고, 배포 서버에서는 `/third-party-notices.txt`로 제공합니다. React-Leaflet의 별도 사용 조건 등 상세: [docs/licenses.md](docs/licenses.md)
 
 ### AI 생성물
 
-- 마스코트 이미지 (`frontend/public/setter-mascot*.png`): **AI 생성 (OpenAI GPT 이미지 모델)**
+- 마스코트·앱 아이콘 이미지 (`frontend/public/setter-mascot*.png`, `frontend/public/setter-icon-*.png`): **AI 생성 (OpenAI GPT 이미지 모델)**
 - AI 서비스 이용약관: [Google Cloud](https://cloud.google.com/terms), [OpenAI](https://openai.com/policies/terms-of-use), [Anthropic](https://www.anthropic.com/legal)
 
 ## 라이선스
