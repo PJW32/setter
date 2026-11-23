@@ -5,6 +5,7 @@
 
 | 문서 | 내용 |
 |---|---|
+| [licenses.md](licenses.md) | 외부 패키지 라이선스, React Leaflet 별도 조건, 배포 원문 고지와 갱신 방법 |
 | [feature-spec.md](feature-spec.md) | 기능 명세서: 화면 구성, 기능 목록(F-01~18), 기능별 수용 기준, 비기능 요구사항 |
 | [api-spec.md](api-spec.md) | API 명세서: 엔드포인트, 요청·응답, 이벤트 스트림 형식, 타입 정의 |
 | [erd.md](erd.md) | ERD: SQLite 테이블, JSON 필드, 세션 메모리 모델 |
