@@ -50,8 +50,10 @@ def _prune_sessions():
             SESSIONS.pop(sid, None)
 
 
-def _reserve(sid: str) -> object:
+def _reserve(sid: str, expected: Session | None = None) -> object:
     with _sessions_lock:
+        if expected is not None and SESSIONS.get(sid) is not expected:
+            raise HTTPException(404, "세션이 없습니다")
         if sid in _inflight:
             raise HTTPException(409, "이 대화의 이전 요청을 처리 중입니다. 완료 후 다시 시도해 주세요.")
         token = object()
@@ -152,7 +154,7 @@ def post_message(sid: str, body: MessageIn, request: Request):
         raise HTTPException(400, "빈 메시지")
     if getattr(request.state, "deployment_protected", False) and len(s.messages) >= 200:
         raise HTTPException(429, "새 대화를 시작해 주세요")
-    token = _reserve(sid)
+    token = _reserve(sid, s)
 
     def stream():
         try:
@@ -174,7 +176,7 @@ def post_message(sid: str, body: MessageIn, request: Request):
 @app.post("/api/sessions/{sid}/what-if")
 def what_if(sid: str, body: WhatIfIn, request: Request):
     s = _session(sid, request)
-    token = _reserve(sid)
+    token = _reserve(sid, s)
     try:
         changes = body.changes.model_dump(exclude_unset=True, exclude_none=True)
         if "set_constraints" in changes:

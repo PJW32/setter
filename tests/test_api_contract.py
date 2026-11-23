@@ -36,6 +36,13 @@ class ApiContractTest(unittest.TestCase):
             self.assertEqual(self.post("messages", {"text": text}).status_code, 400)
         self.assertEqual(main.SESSIONS[self.sid].messages, [])
 
+    def test_evicted_session_cannot_start_after_lookup(self):
+        session = main.SESSIONS.pop(self.sid)
+        with self.assertRaises(HTTPException) as caught:
+            main._reserve(self.sid, session)
+        self.assertEqual(caught.exception.status_code, 404)
+        self.assertNotIn(self.sid, main._inflight)
+
     def test_malformed_what_if_is_422_instead_of_server_error(self):
         changes = [
             {"set_constraints": []},

@@ -4,10 +4,14 @@
 
 | 구분 | 위치 | 수명 | 내용 |
 |---|---|---|---|
-| **영속 저장소** | SQLite `data/store.sqlite` (`backend/store.py`) | 서버를 다시 켜도 남음 | 수집한 시군구·법정동·실거래·통근 |
+| **지역 저장소** | SQLite `data/store.sqlite` (`backend/store.py`) | 로컬 파일을 유지하면 재사용. Render 무료의 실행 중 변경분은 절전·재시작·재배포 시 유실 가능 | 수집한 시군구·법정동·실거래·통근 |
 | **세션 메모리** | 서버 프로세스 메모리 (`backend/agent.py: Session`) | 서버를 다시 켜면 사라짐 | 대화 상태(단계·필수 조건·목적지), 메시지, 마지막 결과 |
 
 외부 API 응답 캐시(`data/cache/<출처>/<해시>.json|xml`)는 파일 저장소로, 모델에는 포함하지 않는다.
+
+실거래 사전 구축본 `data/rent_snapshot.sqlite`는 별도 DB의 `collection`(코드·주택유형·월·정규화 버전별 완료 표시)과 `rental`(정규화 거래 JSON)로 구성된다. Render는 빌드에서 준비하며 실행 중 지역 저장소와 수명이 다르다. 공공 시설 검증본 `data/public_places-essential.sqlite`의 `place`·`metadata`는 [public-data-snapshot.md](public-data-snapshot.md)를 따르며 운영 추천에서는 아직 사용하지 않는다.
+
+지역 재저장은 동·거래·완료 상태를 한 트랜잭션으로 교체하고 예외 시 롤백한다. `deal_count`는 해당 지역의 동에 실제 매칭되어 저장된 거래 수다. 대표 좌표가 바뀌거나 삭제된 동의 통근 캐시는 같은 트랜잭션에서 제거하고, 좌표가 같은 동의 통근은 유지한다. 중복 동 코드 또는 시군구와 맞지 않는 동은 저장 전에 거절한다. 기존 저장분에 대한 강제 삭제·재수집이나 DB 구조 마이그레이션은 하지 않는다.
 
 ## 1. 영속 저장소 (SQLite)
 
@@ -26,7 +30,7 @@ erDiagram
         TEXT name "시군구, 예 성남시 분당구"
         TEXT status "done | error"
         INTEGER dong_count "수집한 법정동 수"
-        INTEGER deal_count "수집한 실거래 수"
+        INTEGER deal_count "동에 매칭되어 실제 저장된 실거래 수"
         TEXT collected_at "수집 시각 ISO8601"
         TEXT error "실패 사유 (status=error)"
     }

@@ -38,6 +38,9 @@ def connect(path: Path | None = None):
     try:
         yield conn
         conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -62,7 +65,18 @@ def list_sggs() -> list[dict]:
 
 
 def save_sgg(code: str, sido: str, name: str, dongs: list[dict], deals: list[dict]) -> None:
+    codes = {d["dong_code"] for d in dongs}
+    if len(codes) != len(dongs) or any(not c.startswith(code) for c in codes):
+        raise ValueError("시군구와 맞지 않거나 중복된 동 코드")
+    saved_deals = [r for r in deals if r["dong_code"] in codes]
     with _write_lock, connect() as c:
+        old = {r["code"]: json.loads(r["data"]) for r in c.execute(
+            "SELECT code, data FROM dong WHERE sgg_code=?", (code,))}
+        current = {d["dong_code"]: d for d in dongs}
+        for dong_code, previous in old.items():
+            new = current.get(dong_code)
+            if new is None or (previous.get("lon"), previous.get("lat")) != (new.get("lon"), new.get("lat")):
+                c.execute("DELETE FROM commute WHERE dong_code=?", (dong_code,))
         c.execute("DELETE FROM dong WHERE sgg_code=?", (code,))
         c.execute("DELETE FROM deal WHERE sgg_code=?", (code,))
         c.executemany("INSERT INTO dong VALUES (?,?,?)",
@@ -70,10 +84,10 @@ def save_sgg(code: str, sido: str, name: str, dongs: list[dict], deals: list[dic
         c.executemany(
             "INSERT INTO deal VALUES (?,?,?,?,?,?,?,?,?)",
             [(r["dong_code"], code, r["house_type"], r["area_m2"], r["area_kind"], r["deposit"],
-              r["monthly_rent"], r["deal_ym"], r["contract_kind"]) for r in deals if r["dong_code"]],
+              r["monthly_rent"], r["deal_ym"], r["contract_kind"]) for r in saved_deals],
         )
         c.execute("INSERT OR REPLACE INTO sgg VALUES (?,?,?,?,?,?,?,?)",
-                  (code, sido, name, "done", len(dongs), len(deals), datetime.now().isoformat(timespec="seconds"), None))
+                  (code, sido, name, "done", len(dongs), len(saved_deals), datetime.now().isoformat(timespec="seconds"), None))
 
 
 def mark_sgg_error(code: str, sido: str, name: str, error: str) -> None:

@@ -60,7 +60,7 @@ python -m uvicorn backend.main:app --reload --port 8000
 | POST | `/api/sessions/{id}/messages` | `{"text": "..."}` → **이벤트 스트림** (아래) |
 | POST | `/api/sessions/{id}/what-if` | `{"changes": {변경분}}` → `{report, payload}` (상태 안 바뀜) |
 
-세션은 서버 메모리에 있다 (서버를 다시 켜면 사라짐). 수집한 지역 데이터는 SQLite 에 남는다.
+세션은 서버 메모리에 있다 (서버를 다시 켜면 사라짐). 수집한 지역 데이터는 SQLite 파일이 유지되는 환경에서 재사용한다. Render 무료 서버에서는 실행 중 변경분이 절전·재시작·재배포 때 사라질 수 있다. 사전 구축 실거래 DB와 지역 수집 DB는 구분하며 [erd.md](erd.md)와 [render-deploy.md](render-deploy.md)를 따른다.
 
 ### 3.1 이벤트 스트림 형식
 

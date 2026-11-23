@@ -5,6 +5,8 @@
 """
 
 import math
+import json
+import logging
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -24,6 +26,12 @@ OUTER_POOL = ThreadPoolExecutor(max_workers=4)
 DISTRICT_POOL = ThreadPoolExecutor(max_workers=2)
 _sgg_locks: dict[str, threading.Lock] = {}
 _locks_guard = threading.Lock()
+
+
+def _profile(event, **values):
+    """공급자 본문·좌표·질문·키 없이 Render 표준 서버 로그에 집계값만 남긴다."""
+    logging.getLogger("uvicorn.error").info("data_profile %s", json.dumps(
+        {"event": event, **values}, ensure_ascii=False, allow_nan=False))
 
 
 def _noop(*_a, **_k):
@@ -132,18 +140,23 @@ def ensure_sgg(code: str, sido: str, name: str, seed: tuple[float, float], log=_
         if st and st["status"] == "done":
             return {**st, "cached": True}
         t0 = time.time()
+        profile_started = time.monotonic()
+        timings = {}
         label = f"{sido} {name}"
         try:
             log("collect", "running", f"{label}: 법정동 찾는 중")
             stage_started = time.monotonic()
             raw = region.discover(code, seed)
+            timings["discover"] = round((time.monotonic() - stage_started) * 1000)
             log("collect", "done", f"{label}: 법정동 탐색 완료", ms=round((time.monotonic() - stage_started) * 1000))
             log("collect", "running", f"{label}: 법정동 {len(raw)}곳 — 대표 지점·역·편의·주점")
             stage_started = time.monotonic()
             dongs = list(OUTER_POOL.map(region.dong_record, raw.values()))
+            timings["points_and_facilities"] = round((time.monotonic() - stage_started) * 1000)
             log("collect", "done", f"{label}: 대표 지점·역·시설 완료", ms=round((time.monotonic() - stage_started) * 1000))
 
             deals = []
+            snapshot_batches, api_batches = 0, 0
             if get_key("DATA_GO_KR_SERVICE_KEY", required=False):
                 log("collect", "running", f"{label}: 전월세 실거래 {S.RENT_MONTHS}개월")
                 stage_started = time.monotonic()
@@ -152,16 +165,27 @@ def ensure_sgg(code: str, sido: str, name: str, seed: tuple[float, float], log=_
                     for ym in _months(S.RENT_END_YM, S.RENT_MONTHS):
                         records = molit.prepared_records(ht, code, ym)
                         if records is None:
+                            api_batches += 1
                             records = [molit.normalize(ht, it) for it in molit.fetch_raw(ht, code, ym)]
+                        else:
+                            snapshot_batches += 1
                         for record in records:
                             r = dict(record)
                             r["dong_code"] = code_of.get(r["dong_name"], "")
                             deals.append(r)
-                log("collect", "done", f"{label}: 실거래 수집 완료", ms=round((time.monotonic() - stage_started) * 1000))
+                timings["rent"] = round((time.monotonic() - stage_started) * 1000)
+                log("collect", "done", f"{label}: 실거래 수집 완료", ms=timings["rent"])
+            stage_started = time.monotonic()
             store.save_sgg(code, sido, name, dongs, deals)
+            timings["store_write"] = round((time.monotonic() - stage_started) * 1000)
+            _profile("district", code=code, status="done", timings_ms=timings,
+                     total_ms=round((time.monotonic() - profile_started) * 1000),
+                     dongs=len(dongs), snapshot_batches=snapshot_batches, api_batches=api_batches)
             log("collect", "done", f"{label}: 동 {len(dongs)}곳, 실거래 {len(deals):,}건 ({time.time() - t0:.0f}초)")
             return {**store.sgg_status(code), "cached": False}
         except Exception as e:  # noqa: BLE001 - 한 시군구가 실패해도 나머지는 계속
+            _profile("district", code=code, status="error", error_type=type(e).__name__, timings_ms=timings,
+                     total_ms=round((time.monotonic() - profile_started) * 1000))
             store.mark_sgg_error(code, sido, name, f"{type(e).__name__}: {e}")
             log("collect", "error", f"{label}: 수집 실패 ({type(e).__name__})")
             return {"code": code, "status": "error", "error": str(e)}
@@ -264,6 +288,7 @@ class DataService:
         log("region", "running", f"{dest.label} 반경 {self.radius_km:g}km 후보 지역 찾는 중")
         sggs = candidate_sggs(dest, self.radius_km)
         cached = [c for c in sggs if (store.sgg_status(c) or {}).get("status") == "done"]
+        region_ms = round((time.monotonic() - stage_started) * 1000)
         log("region", "done", f"후보 시군구 {len(sggs)}곳 (저장됨 {len(cached)}, 새로 수집 {len(sggs) - len(cached)})",
             ms=round((time.monotonic() - stage_started) * 1000))
         stage_started = time.monotonic()
@@ -279,11 +304,19 @@ class DataService:
                     error = exc
         if error is not None:
             raise error
-        log("collect", "done", "후보 지역 준비 완료",
-            ms=round((time.monotonic() - stage_started) * 1000))
+        collect_ms = round((time.monotonic() - stage_started) * 1000)
+        log("collect", "done", f"후보 지역 준비 완료 — 전체 경과 {collect_ms / 1000:.1f}초",
+            ms=collect_ms)
         ok = [c for c in sggs if (store.sgg_status(c) or {}).get("status") == "done"]
         stage_started = time.monotonic()
         ds = build_dataset(dest, ok, self.radius_km, log)
-        log("dataset", "done", f"후보 동 {len(ds.dongs)}곳, 실거래 {sum(len(v) for v in ds.deals_by_dong.values()):,}건",
-            ms=round((time.monotonic() - stage_started) * 1000), total_ms=round((time.monotonic() - started) * 1000))
+        dataset_ms = round((time.monotonic() - stage_started) * 1000)
+        total_ms = round((time.monotonic() - started) * 1000)
+        _profile("dataset", timings_ms={"regions": region_ms, "collection": collect_ms,
+                                        "dataset_including_commutes": dataset_ms, "total": total_ms},
+                 candidate_regions=len(sggs), cached_regions=len(cached), ready_regions=len(ok),
+                 candidate_dongs=len(ds.dongs), deals=sum(map(len, ds.deals_by_dong.values())))
+        log("dataset", "done", f"후보 동 {len(ds.dongs)}곳, 실거래 {sum(len(v) for v in ds.deals_by_dong.values()):,}건"
+            f" — 데이터 준비 전체 경과 {total_ms / 1000:.1f}초 (조건 해석·설명 제외)",
+            ms=dataset_ms, total_ms=total_ms)
         return ds
