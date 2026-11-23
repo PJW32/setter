@@ -20,6 +20,17 @@
 
 ## 원문 제공 및 갱신
 
+### 제출 소개서 별첨 「활용한 외부 자원·출처」 기재 항목
+
+아래는 소개서 지정 양식에 옮겨 넣을 React Leaflet 관련 항목이다. 저장소에 실제 제출 소개서 파일이 없어 이 문서에 기재 내용을 준비했다. 전체 외부 자원 목록을 대체하지 않는다.
+
+| 외부 자원 | 활용 용도 | 출처·링크 | 라이선스 및 이용 조건 |
+|---|---|---|---|
+| React Leaflet 5.0.0 | React 기반 지도 표시 | [공식 저장소](https://github.com/PaulLeCam/react-leaflet), [라이선스 원문](https://github.com/PaulLeCam/react-leaflet/blob/v5.0.0/LICENSE.md) | Hippocratic-2.1. 인권 관련 법·원칙에 관한 사용 조건 및 라이선스·저작권 등 원문 고지 전달 조건 준수. 일부 이전 코드의 MIT 고지를 포함하나 전체 패키지를 MIT로 표기하지 않음. |
+| @react-leaflet/core 3.0.0 | React Leaflet 지도 컴포넌트 연동 | [공식 저장소](https://github.com/PaulLeCam/react-leaflet/tree/v5.0.0/packages/core), [라이선스 원문](https://github.com/PaulLeCam/react-leaflet/blob/v5.0.0/LICENSE.md) | Hippocratic-2.1. 동일한 사용 조건 및 원문 고지 전달 조건 적용. |
+
+라이선스·저작권 원문은 배포물의 `/third-party-notices.txt`에 포함했다. 이는 주최 측의 개별 사용 승인을 의미하지 않는다. 공식 공고(https://korcham-careerfair.com/hackathon)의 외부 자원 활용·적법한 이용 권한·출처 및 이용 조건 기재 안내를 확인했으며, 해당 공고 본문에서 OSI 승인 라이선스만 허용한다는 제한은 확인되지 않았다. 별도 세부 기준이나 운영사무국의 판단까지 확정한 것은 아니다.
+
 [원문 고지](../frontend/public/third-party-notices.txt)에 실제 설치 패키지의 저작권·라이선스·NOTICE 파일을 복사했다. 범위는 직접 Python 의존성 4개와 npm lock의 설치된 운영 의존성이다. 모든 Python 전이 의존성이나 데이터·API·폰트 외부 조건에 관한 전체 감사로 간주하지 않는다.
 
 Vite 빌드에서 이 파일이 `frontend/dist/third-party-notices.txt`로 복사되어 배포 후 `/third-party-notices.txt`로 제공된다. 기존 배포 인증이 활성화되면 같은 인증을 거친다. UI 표시 변경이나 AI 호출은 없다.
