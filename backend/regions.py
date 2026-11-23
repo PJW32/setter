@@ -24,6 +24,9 @@ OUTER_POOL = ThreadPoolExecutor(max_workers=4)
 # 내부 OUTER_POOL/region.POOL과 분리해 중첩 작업의 교착을 피한다.
 # 여러 검색이 들어와도 시군구 수집은 프로세스 전체에서 두 곳까지다.
 DISTRICT_POOL = ThreadPoolExecutor(max_workers=2)
+# 2026-11-23 Render 실측에서 각 약 120초가 걸린 지역. 뒤늦게 시작하는 긴 작업의
+# 꼬리 대기를 줄인다. 없는 지역은 무시하며 후보·조회량·동시 연결 수는 바꾸지 않는다.
+LONG_COLLECTION_CODES = ("41461", "41610")
 _sgg_locks: dict[str, threading.Lock] = {}
 _locks_guard = threading.Lock()
 
@@ -292,8 +295,11 @@ class DataService:
         log("region", "done", f"후보 시군구 {len(sggs)}곳 (저장됨 {len(cached)}, 새로 수집 {len(sggs) - len(cached)})",
             ms=round((time.monotonic() - stage_started) * 1000))
         stage_started = time.monotonic()
-        pending = [DISTRICT_POOL.submit(ensure_sgg, code, info["sido"], info["name"], info["seed"], log)
-                   for code, info in sggs.items() if code not in cached]
+        uncached = [code for code in sggs if code not in cached]
+        priority = {code: i for i, code in enumerate(LONG_COLLECTION_CODES)}
+        scheduled = sorted(uncached, key=lambda code: priority.get(code, len(priority)))
+        pending = [DISTRICT_POOL.submit(ensure_sgg, code, sggs[code]["sido"], sggs[code]["name"], sggs[code]["seed"], log)
+                   for code in scheduled]
         # 요청이 실패해도 이미 시작한 작업이 끝나기 전 반환하지 않는다.
         error = None
         for future in pending:
