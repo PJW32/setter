@@ -51,5 +51,5 @@ scripts/      수집·시연·점검 스크립트
 tests/        단위 테스트 (가상 지역, 네트워크 없음)
 frontend/     React(Vite, TypeScript) 화면: 대화·해석 카드·지도(Leaflet/OSM)·순위표·산점도(Recharts)·비교·순위 변동·작업 노선도
 data/         dongs.json·rent_deals.csv(초기 수집본), store.sqlite(실시간 수집 저장소), cache/
-Docs/         문서
+docs/         문서
 ```

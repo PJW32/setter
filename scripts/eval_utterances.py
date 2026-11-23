@@ -1,4 +1,4 @@
-"""발화 테스트 세트로 조건 추출(Gemini)을 평가한다. Docs/mvp-test-scenarios.md 2절과 같은 목록.
+"""발화 테스트 세트로 조건 추출(Gemini)을 평가한다. docs/mvp-test-scenarios.md 2절과 같은 목록.
 
 실행:  python scripts/eval_utterances.py
 결과:  화면 표 + data/raw/eval_utterances.json
