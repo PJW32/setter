@@ -12,6 +12,7 @@
 | [engine.md](engine.md) | 추천 모델(점수 엔진): 요인, 가중치 단계, 필수 조건, 정규화, 데이터 부족 처리, 순위 변동 분해, 대화 상태 |
 | [data.md](data.md) | 데이터: 출처, 수집 방식(실시간 지역 수집), 저장 형태, 한도, 한계 |
 | [data-prewarm.md](data-prewarm.md) | 사전 수집 명령, 로컬 저장 상태, 결과 보고서, 부분 실패와 배포 시 데이터 유지 |
+| [public-data-snapshot.md](public-data-snapshot.md) | 공공 상가 원본의 지역별 SQLite 구축, 출처·누락 검사, 추천 연결 전 검증 |
 | [backend.md](backend.md) | 백엔드: 구조, 에이전트 한 턴의 흐름, API·이벤트 형식(프론트엔드용), LLM 사용과 검증 |
 | [render-deploy.md](render-deploy.md) | Render 무료 심사용 배포, 접속 인증, 대화 접근 제한, 비밀값 설정과 검증 |
 | [mvp-test-scenarios.md](mvp-test-scenarios.md) | MVP 테스트 시나리오: 시연 대본, 발화 테스트 세트, 예외 상황, 통과 기준 |

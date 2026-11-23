@@ -279,11 +279,15 @@ class DataService:
                     error = exc
         if error is not None:
             raise error
-        log("collect", "done", "후보 지역 준비 완료",
-            ms=round((time.monotonic() - stage_started) * 1000))
+        collect_ms = round((time.monotonic() - stage_started) * 1000)
+        log("collect", "done", f"후보 지역 준비 완료 — 전체 경과 {collect_ms / 1000:.1f}초",
+            ms=collect_ms)
         ok = [c for c in sggs if (store.sgg_status(c) or {}).get("status") == "done"]
         stage_started = time.monotonic()
         ds = build_dataset(dest, ok, self.radius_km, log)
-        log("dataset", "done", f"후보 동 {len(ds.dongs)}곳, 실거래 {sum(len(v) for v in ds.deals_by_dong.values()):,}건",
-            ms=round((time.monotonic() - stage_started) * 1000), total_ms=round((time.monotonic() - started) * 1000))
+        dataset_ms = round((time.monotonic() - stage_started) * 1000)
+        total_ms = round((time.monotonic() - started) * 1000)
+        log("dataset", "done", f"후보 동 {len(ds.dongs)}곳, 실거래 {sum(len(v) for v in ds.deals_by_dong.values()):,}건"
+            f" — 데이터 준비 전체 경과 {total_ms / 1000:.1f}초 (조건 해석·설명 제외)",
+            ms=dataset_ms, total_ms=total_ms)
         return ds

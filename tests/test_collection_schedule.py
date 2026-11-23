@@ -68,6 +68,10 @@ class CollectionScheduleTest(unittest.TestCase):
         timings = [kw for _, kw in logs if "ms" in kw]
         self.assertEqual(len(timings), 3)
         self.assertTrue(all(isinstance(kw["ms"], int) and kw["ms"] >= 0 for kw in timings))
+        collect_log = next((args, kw) for args, kw in logs if args[:2] == ("collect", "done"))
+        self.assertIn(f"전체 경과 {collect_log[1]['ms'] / 1000:.1f}초", collect_log[0][2])
+        dataset_log = next((args, kw) for args, kw in logs if args[:2] == ("dataset", "done"))
+        self.assertIn(f"전체 경과 {dataset_log[1]['total_ms'] / 1000:.1f}초", dataset_log[0][2])
 
     def test_unexpected_failure_drains_other_work_before_returning(self):
         completed = []
