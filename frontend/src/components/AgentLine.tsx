@@ -33,7 +33,11 @@ export default function AgentLine({ logs, busy }: { logs: LogEvent[]; busy: bool
             const last = evs[evs.length - 1]
             const status = busy || last.status !== 'running' ? last.status : 'done'
             const subs = s === 'collect' ? evs.filter((e) => e.status !== 'running') : []
-            const ms = evs.find((e) => e.ms)?.ms
+            const issues = subs.filter((e) => e.status === 'error' || e.status === 'warn')
+            // collect 하위 이벤트의 ms는 개별 지역 시간이다. 전체 완료 전에는 합계처럼 표시하지 않는다.
+            const ms = s === 'collect'
+              ? [...evs].reverse().find((e) => e.status === 'done' && e.detail.startsWith('후보 지역 준비 완료'))?.ms
+              : [...evs].reverse().find((e) => e.ms != null)?.ms
             return (
               <li key={s} className={`stop stop-${status}`}>
                 <span className="stop-dot" aria-hidden="true" />
@@ -45,9 +49,15 @@ export default function AgentLine({ logs, busy }: { logs: LogEvent[]; busy: bool
                   </span>
                   <span className="stop-detail">{last.detail}</span>
                   {subs.length > 0 && (
-                    <ul className="stop-subs">
-                      {subs.map((e, i) => <li key={i} className={`sub-${e.status}`}>{e.detail}</li>)}
-                    </ul>
+                    <details className="stop-log-details">
+                      <summary>상세 기록 {subs.length}건{issues.length > 0 ? ` · 주의·오류 ${issues.length}건` : ''}</summary>
+                      <ul className="stop-subs" tabIndex={0} aria-label="지역별 상세 수집 기록">
+                        {subs.map((e, i) => <li key={i} className={`sub-${e.status}`}>{e.detail}</li>)}
+                      </ul>
+                    </details>
+                  )}
+                  {issues.length > 0 && last !== issues[issues.length - 1] && (
+                    <span className="stop-issue">{issues[issues.length - 1].detail}</span>
                   )}
                 </div>
               </li>
@@ -55,7 +65,7 @@ export default function AgentLine({ logs, busy }: { logs: LogEvent[]; busy: bool
           })}
         </ol>
       )}
-      {busy && logs.some((l) => l.step === 'collect' && l.status === 'running') && (
+      {busy && byStep.get('collect')?.at(-1)?.status === 'running' && (
         <p className="line-note">처음 보는 지역이라 공공데이터를 모으는 중이에요. 몇 분 걸릴 수 있어요.</p>
       )}
     </section>
